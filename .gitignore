@@ -1,0 +1,49 @@
+# --- Local planning artifacts: never publish ---
+.context/
+.claude/
+docs/superpowers/
+PLAN.md
+
+# --- Data ---
+# data/snapshots/ IS committed on purpose: small, public, dated market data
+# that makes the repo runnable offline. Everything else stays local.
+data/raw/
+data/processed/
+data/cache/
+*.parquet
+
+# --- Models / artifacts ---
+models/*.pkl
+*.joblib
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Notebooks ---
+# Notebook OUTPUTS are committed deliberately (recruiter-facing walkthrough);
+# nbmake re-executes them in CI so committed outputs cannot go stale.
+.ipynb_checkpoints/
+
+# --- Secrets ---
+.env
+.env.*
+*.pem
+kaggle.json
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
