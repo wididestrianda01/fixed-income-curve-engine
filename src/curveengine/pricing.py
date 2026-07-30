@@ -172,7 +172,17 @@ def ytm(bond: FixedCouponBond, dirty_price: float, asof: date) -> float:
     yield is a quoting device rather than a term structure.
     """
     period_start, period_end = bond.accrual_period(asof)
-    w = (period_end - asof).days / (period_end - period_start).days
+    w = (
+        year_fraction(
+            asof,
+            period_end,
+            bond.day_count,
+            period_start=period_start,
+            period_end=period_end,
+            frequency=bond.frequency,
+        )
+        * bond.frequency
+    )
     flows = bond.cashflows(asof)
     if not flows:
         raise ValueError(f"{bond} has no cash flows remaining after {asof}")
