@@ -62,6 +62,10 @@ files = ["src", "tests"]
 module = ["QuantLib.*", "scipy.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "pytest"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=curveengine --cov-report=term-missing --cov-fail-under=80 --strict-markers"
