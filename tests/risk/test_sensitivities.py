@@ -168,6 +168,25 @@ def test_analytic_duration_rejects_a_swap(flat: CurveSet) -> None:
         modified_duration(swap, flat, ASOF)
 
 
+def test_modified_duration_rejects_a_bill(flat: CurveSet) -> None:
+    """ytm only accepts FixedCouponBond, so a Bill must be rejected before calling it."""
+    from curveengine.instruments import Bill
+
+    zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
+
+    with pytest.raises(TypeError, match="analytic duration"):
+        modified_duration(zero, flat, ASOF)
+
+
+def test_convexity_rejects_a_bill(flat: CurveSet) -> None:
+    from curveengine.instruments import Bill
+
+    zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
+
+    with pytest.raises(TypeError, match="analytic duration"):
+        convexity(zero, flat, ASOF)
+
+
 def test_effective_duration_accepts_a_swap(flat: CurveSet) -> None:
     swap = VanillaSwap(
         start=ASOF,

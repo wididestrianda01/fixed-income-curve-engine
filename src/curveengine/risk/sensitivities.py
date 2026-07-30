@@ -25,14 +25,20 @@ from curveengine.risk.scenarios import parallel, shift_curveset
 
 _BASIS_POINT = 1e-4
 
-_YieldInstrument = Bill | FixedCouponBond
-
 
 def _require_yield_instrument(instrument: Instrument) -> None:
     if not isinstance(instrument, (Bill, FixedCouponBond)):
         raise TypeError(
             f"{type(instrument).__name__} has no well-defined yield; "
             "use effective_duration, which reprices under a shifted curve"
+        )
+
+
+def _require_bond(instrument: Instrument) -> None:
+    if not isinstance(instrument, FixedCouponBond):
+        raise TypeError(
+            f"{type(instrument).__name__} has no well-defined yield "
+            "for analytic duration/convexity; use effective_duration"
         )
 
 
@@ -60,7 +66,7 @@ def macaulay_duration(instrument: Instrument, curves: CurveSet, asof: date) -> f
 
 def modified_duration(instrument: Instrument, curves: CurveSet, asof: date) -> float:
     """Macaulay duration discounted once more at the instrument's own yield."""
-    _require_yield_instrument(instrument)
+    _require_bond(instrument)
     y = ytm(instrument, price(instrument, curves, asof).dirty, asof)  # type: ignore[arg-type]
     frequency = getattr(instrument, "frequency", 1)
     flows = instrument.cashflows(asof)  # type: ignore[union-attr]
@@ -128,7 +134,7 @@ def convexity(instrument: Instrument, curves: CurveSet, asof: date) -> float:
     the conventions differ. Compare the price change it predicts. See spec
     section 4.3 and ``tests/parity/test_quantlib_risk.py``.
     """
-    _require_yield_instrument(instrument)
+    _require_bond(instrument)
     y = ytm(instrument, price(instrument, curves, asof).dirty, asof)  # type: ignore[arg-type]
     frequency = getattr(instrument, "frequency", 1)
     flows = instrument.cashflows(asof)  # type: ignore[union-attr]
