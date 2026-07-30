@@ -191,3 +191,6 @@ class Swaption:
     swap: VanillaSwap
     strike: float
     pay_fixed: bool = True
+
+
+Instrument = Bill | FixedCouponBond | FRN | VanillaSwap | OIS
