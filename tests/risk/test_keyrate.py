@@ -1,0 +1,146 @@
+"""Key-rate durations, Ho (1992)."""
+
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+
+from curveengine.calendars import USGovernmentBondCalendar
+from curveengine.conventions import BusinessDayConvention, DayCount
+from curveengine.curves.protocol import CurveSet, FlatCurve
+from curveengine.instruments import Bill, FixedCouponBond
+from curveengine.pricing import price
+from curveengine.risk.keyrate import (
+    SEK_KEY_RATES,
+    USD_KEY_RATES,
+    _piecewise_linear,
+    bucket_pnl,
+    hat,
+    krd,
+)
+from curveengine.risk.scenarios import Scenario, shift_curveset
+from curveengine.risk.sensitivities import effective_duration
+
+ASOF = date(2026, 7, 24)
+
+
+@pytest.fixture
+def bond() -> FixedCouponBond:
+    return FixedCouponBond(
+        issue=ASOF,
+        maturity=date(2036, 7, 24),
+        coupon=0.04,
+        frequency=2,
+        day_count=DayCount.ACT_ACT_ICMA,
+        calendar=USGovernmentBondCalendar(),
+        bdc=BusinessDayConvention.FOLLOWING,
+    )
+
+
+@pytest.fixture
+def flat() -> CurveSet:
+    return CurveSet.single(FlatCurve(reference_date=ASOF, rate=0.04))
+
+
+def test_hat_is_full_size_at_its_own_key() -> None:
+    keys = (1.0, 5.0, 10.0)
+
+    assert hat(keys, 1, 0.01).shift(5.0) == pytest.approx(0.01, abs=1e-15)
+
+
+def test_hat_is_zero_at_the_neighbouring_keys() -> None:
+    keys = (1.0, 5.0, 10.0)
+    middle = hat(keys, 1, 0.01)
+
+    assert middle.shift(1.0) == pytest.approx(0.0, abs=1e-15)
+    assert middle.shift(10.0) == pytest.approx(0.0, abs=1e-15)
+
+
+def test_hat_interpolates_linearly_between_keys() -> None:
+    keys = (1.0, 5.0, 10.0)
+
+    assert hat(keys, 1, 0.01).shift(3.0) == pytest.approx(0.005, abs=1e-15)
+
+
+def test_first_hat_is_flat_before_the_first_key() -> None:
+    keys = (1.0, 5.0, 10.0)
+    first = hat(keys, 0, 0.01)
+
+    assert first.shift(0.0) == pytest.approx(0.01, abs=1e-15)
+    assert first.shift(0.5) == pytest.approx(0.01, abs=1e-15)
+
+
+def test_last_hat_is_flat_beyond_the_last_key() -> None:
+    keys = (1.0, 5.0, 10.0)
+    last = hat(keys, 2, 0.01)
+
+    assert last.shift(10.0) == pytest.approx(0.01, abs=1e-15)
+    assert last.shift(50.0) == pytest.approx(0.01, abs=1e-15)
+
+
+@pytest.mark.parametrize("t", [0.0, 0.3, 1.0, 2.5, 5.0, 8.0, 10.0, 40.0])
+def test_hats_sum_to_the_bump_at_every_time(t: float) -> None:
+    keys = (1.0, 5.0, 10.0)
+
+    total = sum(hat(keys, i, 0.01).shift(t) for i in range(len(keys)))
+
+    assert total == pytest.approx(0.01, abs=1e-15)
+
+
+def test_krd_sums_to_effective_duration(bond: FixedCouponBond, flat: CurveSet) -> None:
+    durations = krd(bond, flat, ASOF, USD_KEY_RATES)
+
+    assert sum(durations.values()) == pytest.approx(effective_duration(bond, flat, ASOF), abs=1e-6)
+
+
+def test_krd_is_concentrated_at_the_maturity_of_a_zero(flat: CurveSet) -> None:
+    zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
+
+    durations = krd(zero, flat, ASOF, USD_KEY_RATES)
+
+    assert durations[5.0] == max(durations.values())
+    assert abs(durations[30.0]) < 1e-9
+
+
+def test_krd_of_a_coupon_bond_spans_the_whole_curve(bond: FixedCouponBond, flat: CurveSet) -> None:
+    durations = krd(bond, flat, ASOF, USD_KEY_RATES)
+
+    assert durations[10.0] == max(durations.values())
+    assert durations[1.0] > 0.0
+
+
+def test_bucket_pnl_reconciles_to_a_full_reprice(bond: FixedCouponBond, flat: CurveSet) -> None:
+    shifts = {
+        0.25: 0.0020,
+        0.5: 0.0018,
+        1.0: 0.0015,
+        2.0: 0.0010,
+        3.0: 0.0006,
+        5.0: 0.0000,
+        7.0: -0.0004,
+        10.0: -0.0008,
+        20.0: -0.0012,
+        30.0: -0.0015,
+    }
+
+    scenario = Scenario(name="twist", shift=_piecewise_linear(USD_KEY_RATES, shifts))
+    base = price(bond, flat, ASOF).dirty
+    actual = price(bond, shift_curveset(flat, scenario), ASOF).dirty - base
+
+    predicted = bucket_pnl(bond, flat, ASOF, USD_KEY_RATES, shifts)
+
+    assert predicted == pytest.approx(actual, abs=1e-4 * base)
+
+
+def test_the_sek_grid_matches_the_specification() -> None:
+    assert SEK_KEY_RATES == (0.25, 0.5, 1.0, 2.0, 5.0, 7.0, 10.0)
+
+
+def test_the_usd_grid_matches_the_specification() -> None:
+    assert USD_KEY_RATES == (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0)
+
+
+def test_unsorted_keys_are_rejected(bond: FixedCouponBond, flat: CurveSet) -> None:
+    with pytest.raises(ValueError, match="ascending"):
+        krd(bond, flat, ASOF, (5.0, 1.0, 10.0))
