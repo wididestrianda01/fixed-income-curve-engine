@@ -20,8 +20,8 @@ REFERENCE = date(2026, 7, 24)
 _ECB_COMPOUNDING = Compounding.CONTINUOUS
 
 RECONSTRUCTION_TOLERANCE_BP = 0.5
-FIT_TOLERANCE_BP = 6.0
-FIT_RMSE_BP = 3.0
+FIT_TOLERANCE_BP = 1.0
+FIT_RMSE_BP = 0.5
 
 
 @pytest.fixture(scope="module")
@@ -143,7 +143,7 @@ def test_nelson_siegel_fits_a_curve_it_can_represent_almost_exactly() -> None:
     fitted = NelsonSiegel.fit(times, zeros, reference_date=REFERENCE)
 
     for t in times:
-        assert fitted.zero(float(t)) == pytest.approx(truth.zero(float(t)), abs=3e-4)
+        assert fitted.zero(float(t)) == pytest.approx(truth.zero(float(t)), abs=1e-6)
 
 
 def test_a_non_positive_tau_is_rejected_at_construction() -> None:

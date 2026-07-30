@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import differential_evolution
 
 _SEED = 20260727
 _MIN_TAU = 1e-3
@@ -69,12 +69,7 @@ class Svensson:
         tau1, tau2 = self.tau
         l1 = _factor(t, tau1)
         l2 = _factor(t, tau2)
-        return (
-            b0
-            + b1 * l1
-            + b2 * (l1 - math.exp(-t / tau1 if t > 0.0 else 0.0))
-            + b3 * (l2 - math.exp(-t / tau2 if t > 0.0 else 0.0))
-        )
+        return b0 + b1 * l1 + b2 * (l1 - math.exp(-t / tau1)) + b3 * (l2 - math.exp(-t / tau2))
 
     def df(self, t: float) -> float:
         if t < 0.0:
@@ -99,42 +94,34 @@ class Svensson:
         zeros: Sequence[float],
         reference_date: date,
         *,
-        n_starts: int = 16,
+        n_starts: int = 200,
         seed: int = _SEED,
     ) -> Svensson:
-        t_arr: np.ndarray = np.array(list(times), dtype=np.float64)
-        z_arr: np.ndarray = np.array(list(zeros), dtype=np.float64)
+        t_arr: np.ndarray = np.asarray(times, dtype=float)
+        z_arr: np.ndarray = np.asarray(zeros, dtype=float)
         if len(t_arr) != len(z_arr):
             raise FitError(f"{len(t_arr)} times but {len(z_arr)} zero rates")
         if len(t_arr) < 6:
             raise FitError(f"Svensson has 6 parameters; {len(t_arr)} observations cannot fit it")
 
         def objective(p: np.ndarray) -> float:
+            b0, b1, b2, b3, tau1, tau2 = (
+                float(p[0]),
+                float(p[1]),
+                float(p[2]),
+                float(p[3]),
+                float(p[4]),
+                float(p[5]),
+            )
+            if b0 + b1 <= _CONSTRAINT_FLOOR or tau2 - tau1 <= _MIN_TAU:
+                return np.inf
             candidate = cls(
-                beta=(float(p[0]), float(p[1]), float(p[2]), float(p[3])),
-                tau=(float(p[4]), float(p[5])),
+                beta=(b0, b1, b2, b3),
+                tau=(tau1, tau2),
                 reference_date=reference_date,
             )
             model = np.array([candidate.zero(float(x)) for x in t_arr])
             return float(np.sum((model - z_arr) ** 2))
-
-        rng = np.random.default_rng(seed)
-        long_guess = float(z_arr[-1])
-        short_guess = float(z_arr[0])
-        starts = [np.array([long_guess, short_guess - long_guess, 0.0, 0.0, 1.5, 8.0])]
-        for _ in range(n_starts - 1):
-            starts.append(
-                np.array(
-                    [
-                        long_guess * rng.uniform(0.7, 1.3),
-                        (short_guess - long_guess) * rng.uniform(0.5, 1.5),
-                        rng.uniform(-0.03, 0.03),
-                        rng.uniform(-0.03, 0.03),
-                        rng.uniform(0.3, 4.0),
-                        rng.uniform(4.0, 20.0),
-                    ]
-                )
-            )
 
         bounds = [
             (_CONSTRAINT_FLOOR, 0.25),
@@ -144,23 +131,23 @@ class Svensson:
             (_MIN_TAU, 30.0),
             (_MIN_TAU, 30.0),
         ]
-        constraints = [
-            {"type": "ineq", "fun": lambda p: p[0] + p[1] - _CONSTRAINT_FLOOR},
-            {"type": "ineq", "fun": lambda p: p[5] - p[4] - _MIN_TAU},
-        ]
 
-        best: np.ndarray | None = None
-        best_value = math.inf
-        for start in starts:
-            result = minimize(
-                objective, start, method="SLSQP", bounds=bounds, constraints=constraints
-            )
-            if result.success and result.fun < best_value:
-                best_value = float(result.fun)
-                best = np.array(result.x, dtype=float, copy=True)
+        result = differential_evolution(
+            objective,
+            bounds,
+            seed=seed,
+            polish=True,
+            strategy="best1bin",
+            maxiter=5000,
+            tol=1e-8,
+            popsize=15,
+            mutation=(0.5, 1.5),
+            recombination=0.7,
+        )
+        if not result.success and result.fun == np.inf:
+            raise FitError("Differential evolution found no feasible Svensson fit")
 
-        if best is None:
-            raise FitError(f"No start out of {n_starts} converged on a feasible Svensson fit")
+        best: np.ndarray = np.asarray(result.x, dtype=float)
         return cls(
             beta=(float(best[0]), float(best[1]), float(best[2]), float(best[3])),
             tau=(float(best[4]), float(best[5])),
@@ -207,39 +194,27 @@ class NelsonSiegel:
         zeros: Sequence[float],
         reference_date: date,
         *,
-        n_starts: int = 16,
+        n_starts: int = 200,
         seed: int = _SEED,
     ) -> NelsonSiegel:
-        t: np.ndarray = np.array(list(times), dtype=np.float64)
-        z: np.ndarray = np.array(list(zeros), dtype=np.float64)
+        t: np.ndarray = np.asarray(times, dtype=float)
+        z: np.ndarray = np.asarray(zeros, dtype=float)
         if len(t) != len(z):
             raise FitError(f"{len(t)} times but {len(z)} zero rates")
         if len(t) < 4:
             raise FitError(f"Nelson-Siegel has 4 parameters; {len(t)} observations cannot fit it")
 
         def objective(p: np.ndarray) -> float:
+            b0, b1, b2, tau = float(p[0]), float(p[1]), float(p[2]), float(p[3])
+            if b0 + b1 <= _CONSTRAINT_FLOOR:
+                return np.inf
             candidate = cls(
-                beta=(float(p[0]), float(p[1]), float(p[2])),
-                tau=float(p[3]),
+                beta=(b0, b1, b2),
+                tau=tau,
                 reference_date=reference_date,
             )
             model = np.array([candidate.zero(float(x)) for x in t])
             return float(np.sum((model - z) ** 2))
-
-        rng = np.random.default_rng(seed)
-        long_guess, short_guess = float(z[-1]), float(z[0])
-        starts = [np.array([long_guess, short_guess - long_guess, 0.0, 2.0])]
-        for _ in range(n_starts - 1):
-            starts.append(
-                np.array(
-                    [
-                        long_guess * rng.uniform(0.7, 1.3),
-                        (short_guess - long_guess) * rng.uniform(0.5, 1.5),
-                        rng.uniform(-0.03, 0.03),
-                        rng.uniform(0.3, 12.0),
-                    ]
-                )
-            )
 
         bounds = [
             (_CONSTRAINT_FLOOR, 0.25),
@@ -247,20 +222,23 @@ class NelsonSiegel:
             (-0.25, 0.25),
             (_MIN_TAU, 30.0),
         ]
-        constraints = [{"type": "ineq", "fun": lambda p: p[0] + p[1] - _CONSTRAINT_FLOOR}]
 
-        best: np.ndarray | None = None
-        best_value = math.inf
-        for start in starts:
-            result = minimize(
-                objective, start, method="SLSQP", bounds=bounds, constraints=constraints
-            )
-            if result.success and result.fun < best_value:
-                best_value = float(result.fun)
-                best = np.array(result.x, dtype=float, copy=True)
+        result = differential_evolution(
+            objective,
+            bounds,
+            seed=seed,
+            polish=True,
+            strategy="best1bin",
+            maxiter=5000,
+            tol=1e-8,
+            popsize=15,
+            mutation=(0.5, 1.5),
+            recombination=0.7,
+        )
+        if not result.success and result.fun == np.inf:
+            raise FitError("Differential evolution found no feasible NS fit")
 
-        if best is None:
-            raise FitError(f"No start out of {n_starts} converged on a feasible NS fit")
+        best: np.ndarray = np.asarray(result.x, dtype=float)
         return cls(
             beta=(float(best[0]), float(best[1]), float(best[2])),
             tau=float(best[3]),
