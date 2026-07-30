@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from curveengine.curves.protocol import CurveSet, FlatCurve
 from curveengine.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
 
 SNAPSHOT_DATE = date(2026, 7, 24)
@@ -18,3 +19,9 @@ def snapshot_root() -> Path:
 @pytest.fixture(scope="session")
 def snapshot() -> Snapshot:
     return Snapshot(date=SNAPSHOT_DATE, root=DEFAULT_SNAPSHOT_ROOT)
+
+
+@pytest.fixture
+def flat_curves() -> CurveSet:
+    """A 3% flat continuously compounded single-curve set at SNAPSHOT_DATE."""
+    return CurveSet.single(FlatCurve(reference_date=SNAPSHOT_DATE, rate=0.03))
