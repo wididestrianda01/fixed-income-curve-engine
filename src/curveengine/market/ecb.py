@@ -12,6 +12,7 @@ from typing import Final
 
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 
 _BASE: Final = "https://data-api.ecb.europa.eu/service/data"
 _FLOW: Final = "YC/B.U2.EUR.4F.G_N_A.SV_C_YM"
@@ -63,7 +64,10 @@ def _get(datatype: str, on: date) -> float:
         f"?startPeriod={on.isoformat()}&endPeriod={on.isoformat()}"
         "&format=csvdata"
     )
-    response = requests.get(url, timeout=_TIMEOUT)
+    try:
+        response = requests.get(url, timeout=_TIMEOUT)
+    except RequestException as exc:
+        raise FetchError(f"ECB {datatype} request failed: {exc}") from exc
     if not response.ok:
         raise FetchError(f"ECB {datatype} returned HTTP {response.status_code}")
     frame = pd.read_csv(io.StringIO(response.text))

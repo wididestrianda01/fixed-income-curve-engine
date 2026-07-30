@@ -11,6 +11,7 @@ from typing import Any, Final
 
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 
 _BASE: Final = "https://api.riksbank.se/swea/v1"
 _TIMEOUT: Final = 30.0
@@ -42,7 +43,10 @@ class FetchError(RuntimeError):
 
 def _observation(series_id: str, on: date) -> float:
     url = f"{_BASE}/Observations/{series_id}/{on.isoformat()}/{on.isoformat()}"
-    response = requests.get(url, timeout=_TIMEOUT)
+    try:
+        response = requests.get(url, timeout=_TIMEOUT)
+    except RequestException as exc:
+        raise FetchError(f"{series_id} request failed for {on}: {exc}") from exc
     if not response.ok:
         raise FetchError(f"{series_id} returned HTTP {response.status_code} for {on}")
     payload: list[dict[str, Any]] = response.json()

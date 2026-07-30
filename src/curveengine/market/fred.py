@@ -13,6 +13,7 @@ from typing import Final
 
 import pandas as pd
 import requests
+from requests.exceptions import RequestException
 
 _CSV: Final = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 _TIMEOUT: Final = 30.0
@@ -51,7 +52,10 @@ def _series(series_id: str, start: date, end: date) -> pd.DataFrame:
         "cosd": start.isoformat(),
         "coed": end.isoformat(),
     }
-    response = requests.get(_CSV, params=params, timeout=_TIMEOUT)
+    try:
+        response = requests.get(_CSV, params=params, timeout=_TIMEOUT)
+    except RequestException as exc:
+        raise FetchError(f"FRED {series_id} request failed: {exc}") from exc
     if not response.ok:
         raise FetchError(f"FRED {series_id} returned HTTP {response.status_code}")
     frame = pd.read_csv(io.StringIO(response.text))

@@ -30,10 +30,92 @@ PARSERS = [
     (ecb, "_parse_svensson_parameters", "ecb_svensson_parameters"),
 ]
 
+PARSER_TESTS = [
+    (
+        riksbank,
+        "_parse_bills",
+        {"1M": 3.45, "3M": 3.52},
+        {"1M": date(2026, 8, 31), "3M": date(2026, 11, 2)},
+        ["tenor", "maturity_date", "rate"],
+    ),
+    (
+        riksbank,
+        "_parse_gov_benchmarks",
+        {"2Y": 2.10, "5Y": 2.50},
+        {"2Y": date(2028, 7, 30), "5Y": date(2031, 7, 30)},
+        ["tenor", "maturity_date", "yield"],
+    ),
+    (
+        riksbank,
+        "_parse_swestr",
+        {"ON": 3.25, "1W": 3.26},
+        {},
+        ["tenor", "rate"],
+    ),
+    (
+        riksgalden,
+        "_parse_gov_bonds",
+        {},
+        {},
+        ["isin", "coupon", "issue_date", "maturity_date", "outstanding_nominal"],
+    ),
+    (
+        fred,
+        "_parse_treasury_cmt",
+        {1.0: 4.50, 2.0: 4.40},
+        {},
+        ["series_id", "tenor_years", "rate"],
+    ),
+    (
+        fred,
+        "_parse_ois_swaps",
+        {1.0: 4.30, 2.0: 4.20},
+        {},
+        ["tenor_years", "par_rate"],
+    ),
+    (
+        ecb,
+        "_parse_spot_curve",
+        {1.0: 2.50, 2.0: 2.45},
+        {},
+        ["tenor_years", "zero_rate"],
+    ),
+    (
+        ecb,
+        "_parse_svensson_parameters",
+        {"BETA0": 3.0, "BETA1": -1.0, "BETA2": 0.5, "BETA3": -0.2, "TAU1": 1.5, "TAU2": 15.0},
+        {},
+        ["parameter", "value"],
+    ),
+]
+
 
 @pytest.mark.parametrize(("module", "parser_name", "dataset"), PARSERS)
 def test_every_dataset_has_a_named_parser(module: object, parser_name: str, dataset: str) -> None:
     assert callable(getattr(module, parser_name))
+
+
+@pytest.mark.parametrize(
+    ("module", "parser_name", "raw", "maturities", "expected_columns"), PARSER_TESTS
+)
+def test_parser_produces_committed_columns(
+    module: object,
+    parser_name: str,
+    raw: dict[str, float],
+    maturities: dict[str, date],
+    expected_columns: list[str],
+) -> None:
+    parser = getattr(module, parser_name)
+    if parser_name == "_parse_gov_bonds":
+        result = parser()
+    elif parser_name in ("_parse_bills", "_parse_gov_benchmarks"):
+        result = parser(raw, maturities)
+    else:
+        result = parser(raw)
+
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == expected_columns
+    assert len(result) > 0
 
 
 def test_importing_the_package_opens_no_socket() -> None:

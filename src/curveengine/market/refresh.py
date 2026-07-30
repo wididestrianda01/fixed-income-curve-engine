@@ -50,7 +50,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for name in selected:
         try:
             snapshot.save(name, builders[name]())
-        except Exception as exc:
+        except Exception as exc:  # one bad source must not lose the rest
             failures.append(f"{name}: {exc}")
         else:
             print(f"wrote {name}")
