@@ -10,7 +10,7 @@ import pytest
 from curveengine import instruments
 from curveengine.calendars import NullCalendar, USGovernmentBondCalendar
 from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.instruments import FRN, Bill, FixedCouponBond, VanillaSwap
+from curveengine.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap
 
 
 def make_treasury() -> FixedCouponBond:
@@ -122,6 +122,23 @@ def test_swap_schedules_have_the_expected_period_counts() -> None:
 
     assert len(swap.fixed_schedule()) == 6
     assert len(swap.float_schedule()) == 21
+
+
+def test_ois_matches_vanilla_swap_shape_with_float_day_count() -> None:
+    """OIS should expose float_day_count, same as VanillaSwap."""
+    ois = OIS(
+        start=date(2026, 7, 28),
+        maturity=date(2031, 7, 28),
+        fixed_rate=0.031,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.THIRTY_360_BOND,
+        float_day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
+    )
+    assert ois.float_day_count == DayCount.ACT_360
+    assert len(ois.fixed_schedule()) == 6
+    assert len(ois.float_schedule()) == 6
 
 
 def test_no_instrument_method_accepts_a_curve() -> None:

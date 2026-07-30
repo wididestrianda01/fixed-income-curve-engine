@@ -171,6 +171,7 @@ class OIS:
     fixed_day_count: DayCount
     calendar: Calendar
     bdc: BusinessDayConvention
+    float_day_count: DayCount = DayCount.ACT_360
     notional: float = 1_000_000.0
     pay_fixed: bool = True
     compounded: bool = True
