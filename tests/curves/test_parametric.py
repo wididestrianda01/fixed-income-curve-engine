@@ -86,9 +86,9 @@ def test_reconstruction_from_ecb_parameters_matches_the_ecb_spot_curve(
 
     errors_bp = [abs(curve.zero(t) - z) * 1e4 for t, z in zip(times, published, strict=True)]
 
-    assert (
-        max(errors_bp) < RECONSTRUCTION_TOLERANCE_BP
-    ), f"Worst tenor off by {max(errors_bp):.2f}bp at t={times[errors_bp.index(max(errors_bp))]}"
+    assert max(errors_bp) < RECONSTRUCTION_TOLERANCE_BP, (
+        f"Worst tenor off by {max(errors_bp):.2f}bp at t={times[errors_bp.index(max(errors_bp))]}"
+    )
 
 
 def test_our_fit_reproduces_the_ecb_spot_curve(
