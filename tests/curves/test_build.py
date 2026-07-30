@@ -80,6 +80,37 @@ def test_sek_curve_covers_the_key_rate_grid(snapshot: Snapshot) -> None:
     assert all(curve.df(t) > 0.0 for t in (0.25, 0.5, 1.0, 2.0, 5.0, 7.0, 10.0))
 
 
+def test_basis_is_defined_at_every_requested_tenor(snapshot: Snapshot) -> None:
+    from curveengine.curves.build import government_swap_basis
+
+    tenors = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0)
+    basis = government_swap_basis(snapshot, date(2026, 7, 24), tenors)
+
+    assert set(basis) == set(tenors)
+    assert all(isinstance(v, float) for v in basis.values())
+
+
+def test_basis_is_of_a_plausible_magnitude(snapshot: Snapshot) -> None:
+    from curveengine.curves.build import government_swap_basis
+
+    basis = government_swap_basis(snapshot, date(2026, 7, 24), (2.0, 5.0, 10.0, 30.0))
+
+    assert all(abs(v) < 0.015 for v in basis.values()), basis
+
+
+def test_basis_compares_zeros_not_a_zero_against_a_par_yield(
+    snapshot: Snapshot,
+) -> None:
+    from curveengine.curves.build import government_swap_basis, usd_government_curve
+
+    asof = date(2026, 7, 24)
+    gov = usd_government_curve(snapshot, asof)
+    ois = usd_ois_curve(snapshot, asof)
+    basis = government_swap_basis(snapshot, asof, (10.0,))
+
+    assert basis[10.0] == pytest.approx(ois.zero(10.0) - gov.zero(10.0), abs=1e-12)
+
+
 def test_missing_dataset_raises_a_named_error(snapshot: Snapshot, tmp_path: object) -> None:
     from pathlib import Path
 

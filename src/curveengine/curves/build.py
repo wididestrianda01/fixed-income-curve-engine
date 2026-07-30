@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from curveengine.calendars import NullCalendar, SwedenCalendar
+from curveengine.calendars import NullCalendar, SwedenCalendar, USGovernmentBondCalendar
 from curveengine.conventions import BusinessDayConvention, DayCount
 from curveengine.curves.bootstrap import Quote, bootstrap
 from curveengine.curves.interpolation import InterpMethod, InterpolatedDiscountCurve
@@ -157,6 +157,52 @@ def sek_government_curve(
             )
         )
     return bootstrap(_sorted(quotes), asof=asof, method=method)
+
+
+def usd_government_curve(
+    snapshot: Snapshot,
+    asof: date,
+    *,
+    method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
+) -> InterpolatedDiscountCurve:
+    frame = snapshot.load("fred_treasury_cmt").sort_values("tenor_years")
+    calendar = USGovernmentBondCalendar()
+    quotes: list[Quote] = []
+    for years, rate in zip(frame["tenor_years"], frame["rate"], strict=True):
+        years, rate = float(years), float(rate)
+        maturity = _maturity(asof, years)
+        if years <= 1.0:
+            quotes.append(
+                Quote(instrument=Bill(maturity=maturity, day_count=DayCount.ACT_360), rate=rate)
+            )
+        else:
+            quotes.append(
+                Quote(
+                    instrument=FixedCouponBond(
+                        issue=asof,
+                        maturity=maturity,
+                        coupon=rate,
+                        frequency=2,
+                        day_count=DayCount.ACT_ACT_ICMA,
+                        calendar=calendar,
+                        bdc=BusinessDayConvention.FOLLOWING,
+                    ),
+                    rate=rate,
+                )
+            )
+    return bootstrap(tuple(quotes), asof=asof, method=method)
+
+
+def government_swap_basis(
+    snapshot: Snapshot,
+    asof: date,
+    tenors: Sequence[float],
+    *,
+    method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
+) -> dict[float, float]:
+    swap = usd_ois_curve(snapshot, asof, method=method)
+    government = usd_government_curve(snapshot, asof, method=method)
+    return {float(t): swap.zero(float(t)) - government.zero(float(t)) for t in tenors}
 
 
 def _sorted(quotes: Sequence[Quote]) -> tuple[Quote, ...]:
