@@ -1,3 +1,3 @@
-"""curveengine: fixed-income zero-coupon yield curve fitting and interpolation."""
+"""Fixed-income curve construction, pricing and interest-rate risk."""
 
 __version__ = "0.1.0"
