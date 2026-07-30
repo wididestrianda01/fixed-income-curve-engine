@@ -268,18 +268,24 @@ basis in Phase 3 Task 3.1.
   `TAU1`, `TAU2`
 - **Values (2026-07-24):**
 
-  | Parameter | Value        |
-  |-----------|--------------|
-  | BETA0     | 1.3260646822 |
-  | BETA1     | 0.8461755436 |
-  | BETA2     | 2.0922416378 |
-  | BETA3     | 7.3512863004 |
-  | TAU1      | 1.0791595159 |
-  | TAU2      | 15.4469075503|
+  | Parameter | Value        | CSV (`%.10g`) |
+  |-----------|-------------|---------------|
+  | BETA0     | 1.3260646822 | 1.326064682   |
+  | BETA1     | 0.8461755436 | 0.8461755436  |
+  | BETA2     | 2.0922416378 | 2.092241638   |
+  | BETA3     | 7.3512863004 | 7.3512863     |
+  | TAU1      | 1.0791595159 | 1.079159516   |
+  | TAU2      | 15.4469075503| 15.44690755   |
 
-  Note: ECB publishes BETA0 as a percentage (e.g., 1.326...%), consistent with
+  ECB publishes BETA0 as a percentage (e.g., 1.326...%), consistent with
   the spot curve rates. Stored as-is — the Svensson formula in Phase 2 will use
   these values directly with TAU in years.
+
+  The committed CSV (`ecb_svensson_parameters.csv`) uses Python `%.10g` float
+  formatting, which truncates trailing digits. The "Value" column above records
+  the raw API response; the "CSV" column records the committed file contents.
+  Downstream phases read the CSV, so numeric consistency within the repo is
+  maintained.
 
 - **Licence:** same as ECB Spot Curve above.
 - **CSV:** `ecb_svensson_parameters.csv` — columns: `parameter`, `value`
