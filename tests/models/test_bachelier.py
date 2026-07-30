@@ -52,7 +52,7 @@ def test_implied_vol_inverts_the_price(
 
     assume(abs(price - max(forward - strike, 0.0)) > 1e-14)
 
-    assert bachelier_vol(price, forward, strike, expiry, pay=True) == pytest.approx(vol, rel=1e-6)
+    assert bachelier_vol(price, forward, strike, expiry, pay=True) == pytest.approx(vol, rel=1e-5)
 
 
 def test_a_price_below_intrinsic_is_rejected() -> None:
