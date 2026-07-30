@@ -22,6 +22,9 @@ needed.
 The model binds to the DiscountCurve Protocol, never to a concrete curve class,
 so it runs equally on a bootstrapped curve, a parametric fit, or a curve shifted
 by ``curveengine.risk.scenarios``.
+
+For limitations of this model (negative-rate probability, single-factor correlation,
+missing volatility smile, calibration scope), see ``docs/hull-white-limitations.md``.
 """
 
 from __future__ import annotations
