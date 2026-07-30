@@ -150,6 +150,24 @@ class VanillaSwap:
     def fixed_schedule(self) -> tuple[date, ...]:
         return schedule(self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc)
 
+    def fixed_cashflows(self, asof: date) -> tuple[CashFlow, ...]:
+        dates = self.fixed_schedule()
+        flows = []
+        for previous, payment_date in pairwise(dates):
+            if payment_date <= asof:
+                continue
+            tau = year_fraction(
+                previous,
+                payment_date,
+                self.fixed_day_count,
+                period_start=previous,
+                period_end=payment_date,
+                frequency=self.fixed_frequency,
+            )
+            amount = self.notional * self.fixed_rate * tau
+            flows.append(CashFlow(payment_date, amount))
+        return tuple(flows)
+
     def float_schedule(self) -> tuple[date, ...]:
         return schedule(
             self.start,

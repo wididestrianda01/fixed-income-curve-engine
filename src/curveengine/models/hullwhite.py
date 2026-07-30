@@ -29,11 +29,15 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 
 import numpy as np
 import numpy.typing as npt
+from scipy.optimize import brentq
+from scipy.stats import norm
 
-from curveengine.curves.protocol import DiscountCurve
+from curveengine.curves.protocol import CurveSet, DiscountCurve, curve_time
+from curveengine.instruments import Swaption, VanillaSwap
 
 _FWD_STEP = 1e-5
 
@@ -42,6 +46,10 @@ _SMALL_A = 1e-8
 
 class ModelError(ValueError):
     """The model was constructed with parameters it cannot support."""
+
+
+class CalibrationError(ModelError):
+    """Calibration failed or the provided instruments are inconsistent."""
 
 
 @dataclass(frozen=True)
@@ -163,3 +171,70 @@ class HullWhite:
             paths = self.simulate([0.0, *grid], n_paths, seed=seed)[:, 1:]
         integral = np.trapezoid(paths, x=np.asarray(grid), axis=1)
         return np.exp(-integral)
+
+    def zbo(self, expiry: float, maturity: float, strike: float, *, call: bool) -> float:
+        if not 0.0 <= expiry <= maturity:
+            raise ValueError(f"require 0 <= expiry <= maturity, got {expiry}, {maturity}")
+        p_maturity = self.curve.df(maturity)
+        p_expiry = self.curve.df(expiry)
+        if expiry == 0.0 or self.sigma == 0.0:
+            intrinsic = p_maturity - strike * p_expiry if call else strike * p_expiry - p_maturity
+            return max(intrinsic, 0.0)
+        if self.a < _SMALL_A:
+            variance = self.sigma**2 * expiry
+        else:
+            variance = self.sigma**2 * (1.0 - math.exp(-2.0 * self.a * expiry)) / (2.0 * self.a)
+        sigma_p = math.sqrt(variance) * self.B(expiry, maturity)
+        h = math.log(p_maturity / (p_expiry * strike)) / sigma_p + 0.5 * sigma_p
+        if call:
+            return p_maturity * float(norm.cdf(h)) - strike * p_expiry * float(
+                norm.cdf(h - sigma_p)
+            )
+        return strike * p_expiry * float(norm.cdf(-h + sigma_p)) - p_maturity * float(norm.cdf(-h))
+
+    def forward_swap_value(self, swap: VanillaSwap, t: float, r: float, asof: date) -> float:
+        """Value of ``swap`` at time ``t`` in state ``r``, seen from the fixed-rate payer."""
+        flows = swap.fixed_cashflows(asof)
+        times = [curve_time(asof, flow.date) for flow in flows]
+        notional = swap.notional
+        amounts = [flow.amount / notional for flow in flows]
+        amounts[-1] += 1.0
+        fixed = sum(a * self.zcb(t, tenor, r) for a, tenor in zip(amounts, times, strict=False))
+        return notional * (1.0 - fixed)
+
+    def swaption(self, swaption: Swaption, asof: date) -> float:
+        expiry = curve_time(asof, swaption.expiry)
+        flows = swaption.swap.fixed_cashflows(asof)
+        times = [curve_time(asof, flow.date) for flow in flows]
+        notional = swaption.swap.notional
+        amounts = [flow.amount / notional for flow in flows]
+        if not times or times[0] < expiry - 1e-9:
+            raise CalibrationError("Swaption expiry must not fall after the first fixed cash flow")
+        amounts[-1] += 1.0  # terminal notional
+
+        def swap_value(r: float) -> float:
+            fixed = sum(
+                a * self.zcb(expiry, tenor, r) for a, tenor in zip(amounts, times, strict=False)
+            )
+            return 1.0 - fixed
+
+        r_star = float(brentq(swap_value, -0.50, 1.00, xtol=1e-14))
+        strikes = [self.zcb(expiry, tenor, r_star) for tenor in times]
+
+        call = not swaption.pay_fixed
+        return notional * sum(
+            a * self.zbo(expiry, tenor, k, call=call)
+            for a, tenor, k in zip(amounts, times, strikes, strict=False)
+        )
+
+    def swaption_normal_vol(self, swaption: Swaption, asof: date) -> float:
+        from curveengine.models.bachelier import bachelier_vol
+        from curveengine.pricing import annuity, par_rate
+
+        curves = CurveSet.single(self.curve)
+        forward = par_rate(swaption.swap, curves, asof)
+        expiry = curve_time(asof, swaption.expiry)
+        undiscounted = self.swaption(swaption, asof) / (
+            swaption.swap.notional * annuity(swaption.swap, curves, asof)
+        )
+        return bachelier_vol(undiscounted, forward, swaption.strike, expiry, pay=swaption.pay_fixed)
