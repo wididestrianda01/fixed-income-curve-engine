@@ -3,6 +3,8 @@
 .claude/
 docs/superpowers/
 PLAN.md
+.codegraph/
+graphify-out/
 
 # --- Data ---
 # data/snapshots/ IS committed on purpose: small, public, dated market data
@@ -47,3 +49,5 @@ kaggle.json
 .DS_Store
 .idea/
 .vscode/
+.serena/
+.superpowers/sdd/
