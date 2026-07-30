@@ -94,7 +94,6 @@ class Svensson:
         zeros: Sequence[float],
         reference_date: date,
         *,
-        n_starts: int = 200,
         seed: int = _SEED,
     ) -> Svensson:
         t_arr: np.ndarray = np.asarray(times, dtype=float)
@@ -194,7 +193,6 @@ class NelsonSiegel:
         zeros: Sequence[float],
         reference_date: date,
         *,
-        n_starts: int = 200,
         seed: int = _SEED,
     ) -> NelsonSiegel:
         t: np.ndarray = np.asarray(times, dtype=float)
