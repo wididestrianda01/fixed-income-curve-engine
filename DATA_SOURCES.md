@@ -249,9 +249,11 @@ basis in Phase 3 Task 3.1.
   | 25            | 0.036377301747      |
   | 30            | 0.036199846793      |
 
-  Rates are continuously compounded zero-coupon yields. No short-dated tenors
-  (<1Y) are published as separate spot rate series; the Svensson model
-  analytically extends to the short end.
+  Rates are continuously compounded zero-coupon yields, per the ECB technical
+  notes (§3: "The continuous method is used to compound interest rates" —
+  [Technical Notes](https://www.ecb.europa.eu/stats/financial_markets_and_interest_rates/euro_area_yield_curves/shared/pdf/technical_notes.pdf)).
+  No short-dated tenors (<1Y) are published as separate spot rate series; the
+  Svensson model analytically extends to the short end.
 
 - **Licence:** "All publicly available ESCB statistics may be reused free of charge on
   the condition that the source is quoted (e.g. 'Source: ECB statistics.') and that
@@ -277,15 +279,14 @@ basis in Phase 3 Task 3.1.
   | TAU1      | 1.0791595159 | 1.079159516   |
   | TAU2      | 15.4469075503| 15.44690755   |
 
-  ECB publishes BETA0 as a percentage (e.g., 1.326...%), consistent with
-  the spot curve rates. Stored as-is — the Svensson formula in Phase 2 will use
-  these values directly with TAU in years.
+  ECB publishes beta parameters as percentages (e.g., BETA0 = 1.326…%).
+  The committed CSV stores them as-is from the API, in percent. Downstream code
+  divides by 100 to convert to decimal before feeding the Svensson formula.
+  TAU values are in years and used directly.
 
-  The committed CSV (`ecb_svensson_parameters.csv`) uses Python `%.10g` float
-  formatting, which truncates trailing digits. The "Value" column above records
-  the raw API response; the "CSV" column records the committed file contents.
-  Downstream phases read the CSV, so numeric consistency within the repo is
-  maintained.
+  The "Value" column above records the raw API response; the committed CSV
+  (`ecb_svensson_parameters.csv`) uses `%.10g` formatting. Downstream phases
+  read the CSV, so numeric consistency within the repo is maintained.
 
 - **Licence:** same as ECB Spot Curve above.
 - **CSV:** `ecb_svensson_parameters.csv` — columns: `parameter`, `value`
