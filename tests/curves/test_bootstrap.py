@@ -193,3 +193,13 @@ def test_discount_factors_rejects_wrong_shaped_prices() -> None:
 def test_matrix_form_rejects_a_non_square_system() -> None:
     with pytest.raises(CurveConstructionError, match="square"):
         discount_factors_from_cashflow_matrix(np.ones((2, 3)), np.ones(2))
+
+
+def test_a_quote_no_discount_factor_can_reach_is_rejected() -> None:
+    """The solver brackets the unknown discount factor in [1e-8, 5.0]. A par
+    rate of -1000% lies outside what any factor in that range can produce, so
+    the residual has the same sign at both ends and Brent has nothing to solve.
+    Better to name the inconsistent quote than to hand brentq an invalid
+    bracket and let it raise about the sign of f(a) and f(b)."""
+    with pytest.raises(CurveConstructionError, match="inconsistent"):
+        bootstrap([Quote(swap(date(2031, 7, 24), -10.0), -10.0)], asof=REFERENCE)

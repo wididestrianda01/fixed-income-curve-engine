@@ -241,3 +241,23 @@ def test_an_frn_accrues_interest_between_resets(flat: CurveSet) -> None:
 def test_pricing_an_unsupported_type_names_the_type(flat: CurveSet) -> None:
     with pytest.raises(TypeError, match="str"):
         price("not an instrument", flat, asof=REFERENCE)
+
+
+def test_a_matured_frn_is_worth_nothing(flat: CurveSet) -> None:
+    """Past the last payment date there is no cash flow left to project, so the
+    note is worth zero rather than raising — a redeemed bond is a legitimate
+    thing to hold in a portfolio being repriced."""
+    frn = FRN(
+        issue=date(2021, 7, 24),
+        maturity=date(2026, 1, 24),
+        frequency=2,
+        day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+        index_tenor="6M",
+        spread=0.0,
+    )
+
+    result = price(frn, flat, asof=REFERENCE)
+
+    assert (result.dirty, result.clean, result.accrued) == (0.0, 0.0, 0.0)
