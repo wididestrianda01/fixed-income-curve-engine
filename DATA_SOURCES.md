@@ -334,3 +334,17 @@ CME data.
 consumption but not through a machine-readable free API. They are excluded from this
 snapshot. If SFBF publishes an open API in future, STIBOR should be added as a SEK
 curve instrument.
+
+---
+
+## FRED Treasury CMT History (USD)
+
+- **Publisher:** Federal Reserve Bank of St. Louis (FRED)
+- **API/Endpoint:** `https://fred.stlouisfed.org/graph/fredgraph.csv`
+- **Series identifiers:** DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS3, DGS5, DGS7, DGS10, DGS20, DGS30
+  (same as `fred_treasury_cmt`)
+- **Window:** Five years ending SNAPSHOT_DATE (2021-07-25 to 2026-07-24).
+  US market holidays are dropped (FRED returns NaN).
+- **Licence:** U.S. Treasury CMT rates are public domain (U.S. Government work).
+  Attribution: Board of Governors of the Federal Reserve System (US), retrieved via FRED.
+- **CSV:** `fred_treasury_cmt_history.csv` — columns: `date`, `tenor_years`, `rate` (decimal)
