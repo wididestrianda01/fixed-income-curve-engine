@@ -14,9 +14,9 @@ from itertools import pairwise
 
 from scipy.optimize import brentq
 
-from curveengine.conventions import DayCount, year_fraction
-from curveengine.curves.protocol import CurveSet, DiscountCurve, curve_time
-from curveengine.instruments import (
+from yieldcurve.conventions import DayCount, year_fraction
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve, curve_time
+from yieldcurve.instruments import (
     FRN,
     OIS,
     Bill,

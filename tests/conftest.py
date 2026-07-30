@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
 
 SNAPSHOT_DATE = date(2026, 7, 24)
 

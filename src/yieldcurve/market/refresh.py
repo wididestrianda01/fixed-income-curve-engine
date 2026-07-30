@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from curveengine.market import ecb, fred, riksbank, riksgalden
-from curveengine.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
+from yieldcurve.market import ecb, fred, riksbank, riksgalden
+from yieldcurve.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
 
 _HISTORY_YEARS = 5
 
@@ -37,7 +37,7 @@ def _builders(on: date) -> dict[str, Callable[[], pd.DataFrame]]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="curveengine.market.refresh")
+    parser = argparse.ArgumentParser(prog="yieldcurve.market.refresh")
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     parser.add_argument("--only", nargs="*", default=None)
     parser.add_argument("--root", type=str, default=str(DEFAULT_SNAPSHOT_ROOT))

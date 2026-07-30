@@ -9,8 +9,8 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.risk.scenarios import Scenario, parallel, shift_curve, shift_curveset
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.risk.scenarios import Scenario, parallel, shift_curve, shift_curveset
 
 ASOF = date(2026, 7, 24)
 

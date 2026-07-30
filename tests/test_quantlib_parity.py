@@ -11,11 +11,11 @@ from datetime import date
 import pytest
 import QuantLib as ql  # noqa: N813
 
-from curveengine.calendars import SwedenCalendar, USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import FixedCouponBond
-from curveengine.pricing import price, ytm
+from yieldcurve.calendars import SwedenCalendar, USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import price, ytm
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import FixedCouponBond
 
 REFERENCE = date(2026, 7, 24)
 FLAT_RATE = 0.03

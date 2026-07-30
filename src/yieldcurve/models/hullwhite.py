@@ -21,7 +21,7 @@ needed.
 
 The model binds to the DiscountCurve Protocol, never to a concrete curve class,
 so it runs equally on a bootstrapped curve, a parametric fit, or a curve shifted
-by ``curveengine.risk.scenarios``.
+by ``yieldcurve.risk.scenarios``.
 
 For limitations of this model (negative-rate probability, single-factor correlation,
 missing volatility smile, calibration scope), see ``docs/hull-white-limitations.md``.
@@ -39,9 +39,9 @@ import numpy.typing as npt
 from scipy.optimize import brentq, least_squares
 from scipy.stats import norm
 
-from curveengine.curves.protocol import CurveSet, DiscountCurve, curve_time
-from curveengine.instruments import Swaption, VanillaSwap
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve, curve_time
+from yieldcurve.instruments import Swaption, VanillaSwap
+from yieldcurve.market.snapshot import Snapshot
 
 _FWD_STEP = 1e-5  # finite-difference epsilon for instantaneous forward, not 1-day step
 
@@ -245,8 +245,8 @@ class HullWhite:
         )
 
     def swaption_normal_vol(self, swaption: Swaption, asof: date) -> float:
-        from curveengine.models.bachelier import bachelier_vol
-        from curveengine.pricing import annuity, par_rate
+        from yieldcurve.curves.pricing import annuity, par_rate
+        from yieldcurve.models.bachelier import bachelier_vol
 
         curves = CurveSet.single(self.curve)
         forward = par_rate(swaption.swap, curves, asof)
@@ -307,10 +307,10 @@ def calibrate(
 def atm_swaption_grid(
     snapshot: Snapshot, asof: date, curve: DiscountCurve
 ) -> tuple[tuple[Swaption, ...], tuple[float, ...]]:
-    from curveengine.calendars import USGovernmentBondCalendar
-    from curveengine.conventions import BusinessDayConvention, DayCount
-    from curveengine.instruments import Swaption, VanillaSwap
-    from curveengine.pricing import par_rate
+    from yieldcurve.calendars import USGovernmentBondCalendar
+    from yieldcurve.conventions import BusinessDayConvention, DayCount
+    from yieldcurve.curves.pricing import par_rate
+    from yieldcurve.instruments import Swaption, VanillaSwap
 
     data = snapshot.load("cme_swaption_vols")
     calendar = USGovernmentBondCalendar()

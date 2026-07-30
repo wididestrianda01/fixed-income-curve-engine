@@ -17,11 +17,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from curveengine.conventions import year_fraction
-from curveengine.curves.protocol import CurveSet, curve_time
-from curveengine.instruments import Bill, FixedCouponBond, Instrument
-from curveengine.pricing import price, ytm
-from curveengine.risk.scenarios import parallel, shift_curveset
+from yieldcurve.conventions import year_fraction
+from yieldcurve.curves.pricing import price, ytm
+from yieldcurve.curves.protocol import CurveSet, curve_time
+from yieldcurve.instruments import Bill, FixedCouponBond, Instrument
+from yieldcurve.risk.scenarios import parallel, shift_curveset
 
 _BASIS_POINT = 1e-4
 

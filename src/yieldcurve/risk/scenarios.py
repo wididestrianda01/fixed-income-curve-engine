@@ -1,6 +1,6 @@
 """Curve scenarios and the single shift primitive.
 
-Everything in ``curveengine.risk`` that needs a moved curve calls
+Everything in ``yieldcurve.risk`` that needs a moved curve calls
 ``shift_curve``. Effective duration, key-rate duration, PCA duration and the
 regulatory scenario P&L are then the same computation with a different
 ``Scenario`` — which is what makes ``sum(krd) == effective_duration`` an
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from curveengine.curves.protocol import CurveSet, DiscountCurve
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve
 
 
 @dataclass(frozen=True)

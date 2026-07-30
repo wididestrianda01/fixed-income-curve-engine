@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from curveengine.curves.protocol import FlatCurve
-from curveengine.risk.scenarios import (
+from yieldcurve.curves.protocol import FlatCurve
+from yieldcurve.risk.scenarios import (
     ScenarioConfigError,
     bcbs_scenarios,
     shift_curve,

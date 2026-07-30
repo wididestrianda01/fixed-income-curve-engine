@@ -7,12 +7,12 @@ from datetime import date
 import pytest
 import QuantLib as ql  # noqa: N813
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import FixedCouponBond
-from curveengine.pricing import price
-from curveengine.risk.sensitivities import (
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import FixedCouponBond
+from yieldcurve.risk.sensitivities import (
     convexity,
     modified_duration,
 )

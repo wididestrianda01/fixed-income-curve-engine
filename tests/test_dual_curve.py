@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.build import usd_curveset
-from curveengine.curves.protocol import CurveSet
-from curveengine.instruments import FRN
-from curveengine.market.snapshot import Snapshot
-from curveengine.pricing import price
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.build import usd_curveset
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet
+from yieldcurve.instruments import FRN
+from yieldcurve.market.snapshot import Snapshot
 
 _CALENDAR = USGovernmentBondCalendar()
 
@@ -98,7 +98,7 @@ def test_the_pricer_was_not_modified_for_this_phase() -> None:
     mentions of "build" or "snapshot") are acceptable — the test tells the
     developer to move that concern out of the pricing module.
     """
-    import curveengine.pricing as pricing_module
+    import yieldcurve.curves.pricing as pricing_module
 
     source = Path(pricing_module.__file__).read_text(encoding="utf-8")
 

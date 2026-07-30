@@ -6,8 +6,8 @@ from datetime import date
 
 import pytest
 
-from curveengine.calendars import NullCalendar, SwedenCalendar
-from curveengine.conventions import BusinessDayConvention, add_months, adjust, schedule
+from yieldcurve.calendars import NullCalendar, SwedenCalendar
+from yieldcurve.conventions import BusinessDayConvention, add_months, adjust, schedule
 
 
 def test_following_rolls_a_saturday_forward_to_monday() -> None:

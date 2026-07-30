@@ -9,9 +9,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from curveengine.curves.parametric import Svensson
-from curveengine.curves.protocol import FlatCurve
-from curveengine.models.hullwhite import HullWhite, ModelError
+from yieldcurve.curves.parametric import Svensson
+from yieldcurve.curves.protocol import FlatCurve
+from yieldcurve.models.hullwhite import HullWhite, ModelError
 
 ASOF = date(2026, 7, 24)
 
@@ -87,7 +87,7 @@ def test_instantaneous_forward_matches_svensson_analytically() -> None:
 def test_the_model_binds_to_the_protocol_not_a_concrete_curve() -> None:
     from pathlib import Path
 
-    import curveengine.models.hullwhite as module
+    import yieldcurve.models.hullwhite as module
 
     source = Path(module.__file__).read_text(encoding="utf-8")
     body = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))

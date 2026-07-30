@@ -43,7 +43,7 @@ class Snapshot:
             raise MissingDatasetError(
                 f"Dataset {name!r} not found at {target}. "
                 f"Available in this snapshot: {self.available()}. "
-                "Rebuild a snapshot with: python -m curveengine.market.refresh"
+                "Rebuild a snapshot with: python -m yieldcurve.market.refresh"
             )
         return pd.read_csv(target)
 
@@ -64,6 +64,6 @@ class Snapshot:
         if not candidates:
             raise MissingDatasetError(
                 f"There are no snapshots under {root}. "
-                "Build one with: python -m curveengine.market.refresh"
+                "Build one with: python -m yieldcurve.market.refresh"
             )
         return cls(date=date.fromisoformat(candidates[-1]), root=root)

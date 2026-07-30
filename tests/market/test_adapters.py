@@ -16,8 +16,8 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from curveengine.market import ecb, fred, riksbank, riksgalden
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.market import ecb, fred, riksbank, riksgalden
+from yieldcurve.market.snapshot import Snapshot
 
 PARSERS = [
     (riksbank, "_parse_bills", "riksbank_bills"),
@@ -120,11 +120,7 @@ def test_parser_produces_committed_columns(
 
 def test_importing_the_package_opens_no_socket() -> None:
     program = (
-        "import socket;"
-        "socket.socket = None;"
-        "import curveengine;"
-        "import curveengine.market;"
-        "print('ok')"
+        "import socket;socket.socket = None;import yieldcurve;import yieldcurve.market;print('ok')"
     )
     result = subprocess.run(
         [sys.executable, "-c", program], capture_output=True, text=True, check=False
@@ -135,7 +131,7 @@ def test_importing_the_package_opens_no_socket() -> None:
 
 
 def test_refresh_is_importable_without_fetching() -> None:
-    module = importlib.import_module("curveengine.market.refresh")
+    module = importlib.import_module("yieldcurve.market.refresh")
 
     assert callable(module.main)
 

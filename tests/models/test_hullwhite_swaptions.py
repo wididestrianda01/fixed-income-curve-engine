@@ -8,12 +8,12 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import Swaption, VanillaSwap
-from curveengine.models.hullwhite import HullWhite
-from curveengine.pricing import par_rate
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import par_rate
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import Swaption, VanillaSwap
+from yieldcurve.models.hullwhite import HullWhite
 
 ASOF = date(2026, 7, 24)
 SEED = 20260727
@@ -73,7 +73,7 @@ def test_payer_and_receiver_swaptions_satisfy_parity(model: HullWhite, curves: C
     payer = model.swaption(_swaption(strike, pay=True), ASOF)
     receiver = model.swaption(_swaption(strike, pay=False), ASOF)
 
-    from curveengine.pricing import price
+    from yieldcurve.curves.pricing import price
 
     forward_swap = price(_swaption(strike).swap, curves, ASOF).dirty
 
@@ -83,7 +83,7 @@ def test_payer_and_receiver_swaptions_satisfy_parity(model: HullWhite, curves: C
 def test_an_atm_swaption_is_worth_more_than_zero_and_less_than_the_annuity(
     model: HullWhite, curves: CurveSet
 ) -> None:
-    from curveengine.pricing import annuity
+    from yieldcurve.curves.pricing import annuity
 
     atm = par_rate(_swaption(0.0).swap, curves, ASOF)
     value = model.swaption(_swaption(atm), ASOF)
@@ -101,7 +101,7 @@ def test_swaption_value_rises_with_volatility(curves: CurveSet) -> None:
 
 
 def test_zero_volatility_gives_the_forward_swap_intrinsic(curves: CurveSet) -> None:
-    from curveengine.pricing import price
+    from yieldcurve.curves.pricing import price
 
     model = HullWhite(curve=curves.discount, a=0.05, sigma=0.0)
     strike = 0.02

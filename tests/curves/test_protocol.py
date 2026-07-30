@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from curveengine.curves.protocol import CurveSet, DiscountCurve, FlatCurve, curve_time
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve, FlatCurve, curve_time
 
 REFERENCE = date(2026, 7, 24)
 

@@ -6,12 +6,12 @@ from datetime import date
 
 import pytest
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import FixedCouponBond, VanillaSwap
-from curveengine.pricing import price
-from curveengine.risk.sensitivities import (
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import FixedCouponBond, VanillaSwap
+from yieldcurve.risk.sensitivities import (
     convexity,
     dollar_duration,
     dv01,
@@ -45,7 +45,7 @@ def flat() -> CurveSet:
 def test_zero_coupon_macaulay_duration_equals_its_maturity(flat: CurveSet) -> None:
     """The one duration everybody can check by hand. A zero has a single cash
     flow, so its weighted mean time is its maturity, exactly."""
-    from curveengine.instruments import Bill
+    from yieldcurve.instruments import Bill
 
     zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
 
@@ -55,7 +55,7 @@ def test_zero_coupon_macaulay_duration_equals_its_maturity(flat: CurveSet) -> No
 def test_modified_is_macaulay_discounted_by_the_yield(
     bond: FixedCouponBond, flat: CurveSet
 ) -> None:
-    from curveengine.pricing import ytm
+    from yieldcurve.curves.pricing import ytm
 
     y = ytm(bond, price(bond, flat, ASOF).dirty, ASOF)
     macaulay = macaulay_duration(bond, flat, ASOF)
@@ -118,7 +118,7 @@ def test_duration_and_convexity_predict_a_real_reprice(
     """The spec's rule: compare the implied price change, never the raw
     convexity number. A 50bp move is large enough that a duration-only
     prediction misses and the convexity term has to do work."""
-    from curveengine.risk.scenarios import parallel, shift_curveset
+    from yieldcurve.risk.scenarios import parallel, shift_curveset
 
     base = price(bond, flat, ASOF).dirty
     move = 0.0050
@@ -139,7 +139,7 @@ def test_duration_alone_underpredicts_the_gain_on_a_rally(
     """Positive convexity means the linear estimate is always pessimistic in
     both directions. If this fails, the convexity term has the wrong sign and
     the previous test was passing on a cancellation."""
-    from curveengine.risk.scenarios import parallel, shift_curveset
+    from yieldcurve.risk.scenarios import parallel, shift_curveset
 
     base = price(bond, flat, ASOF).dirty
     actual = price(bond, shift_curveset(flat, parallel(-0.0050)), ASOF).dirty
@@ -170,7 +170,7 @@ def test_analytic_duration_rejects_a_swap(flat: CurveSet) -> None:
 
 def test_modified_duration_rejects_a_bill(flat: CurveSet) -> None:
     """ytm only accepts FixedCouponBond, so a Bill must be rejected before calling it."""
-    from curveengine.instruments import Bill
+    from yieldcurve.instruments import Bill
 
     zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
 
@@ -179,7 +179,7 @@ def test_modified_duration_rejects_a_bill(flat: CurveSet) -> None:
 
 
 def test_convexity_rejects_a_bill(flat: CurveSet) -> None:
-    from curveengine.instruments import Bill
+    from yieldcurve.instruments import Bill
 
     zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
 

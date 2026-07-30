@@ -2,7 +2,7 @@
 
 Nothing here discounts anything. An instrument knows its own dates, day count
 and coupon; turning that into a price requires a curve, and that happens in
-``curveengine.pricing``. Keeping the split means the floating-rate note needs no
+``yieldcurve.curves.pricing``. Keeping the split means the floating-rate note needs no
 special pricer of its own, and a shocked curve reprices every instrument without
 any instrument knowing a shock occurred.
 """
@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
 
-from curveengine.calendars import Calendar
-from curveengine.conventions import (
+from yieldcurve.calendars import Calendar
+from yieldcurve.conventions import (
     BusinessDayConvention,
     DayCount,
     schedule,
@@ -127,7 +127,7 @@ class FRN:
     def cashflows(self, asof: date) -> tuple[CashFlow, ...]:
         raise NotImplementedError(
             "An FRN's coupons are unknown without a forecast curve. "
-            "Use curveengine.pricing.price(frn, curves, asof)."
+            "Use yieldcurve.curves.pricing.price(frn, curves, asof)."
         )
 
 

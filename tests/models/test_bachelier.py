@@ -8,7 +8,7 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from curveengine.models.bachelier import bachelier_price, bachelier_vol
+from yieldcurve.models.bachelier import bachelier_price, bachelier_vol
 
 
 def test_atm_price_matches_the_closed_form() -> None:

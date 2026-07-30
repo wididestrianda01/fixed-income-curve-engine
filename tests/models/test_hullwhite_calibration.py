@@ -6,10 +6,10 @@ from datetime import date
 
 import pytest
 
-from curveengine.curves.build import usd_ois_curve
-from curveengine.curves.protocol import FlatCurve
-from curveengine.market.snapshot import Snapshot
-from curveengine.models.hullwhite import (
+from yieldcurve.curves.build import usd_ois_curve
+from yieldcurve.curves.protocol import FlatCurve
+from yieldcurve.market.snapshot import Snapshot
+from yieldcurve.models.hullwhite import (
     HullWhite,
     atm_swaption_grid,
     calibrate,
@@ -87,9 +87,9 @@ def test_calibration_to_the_market_grid_fits_within_ten_vol_basis_points(
 
 
 def _synthetic_grid() -> tuple[tuple, tuple]:  # type: ignore[type-arg]
-    from curveengine.calendars import USGovernmentBondCalendar
-    from curveengine.conventions import BusinessDayConvention, DayCount
-    from curveengine.instruments import Swaption, VanillaSwap
+    from yieldcurve.calendars import USGovernmentBondCalendar
+    from yieldcurve.conventions import BusinessDayConvention, DayCount
+    from yieldcurve.instruments import Swaption, VanillaSwap
 
     curve = FlatCurve(reference_date=ASOF, rate=0.03)
     truth = HullWhite(curve=curve, a=0.07, sigma=0.011)

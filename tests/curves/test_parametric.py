@@ -8,10 +8,10 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.conventions import Compounding, to_continuous
-from curveengine.curves.parametric import FitError, NelsonSiegel, Svensson
-from curveengine.curves.protocol import DiscountCurve
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.conventions import Compounding, to_continuous
+from yieldcurve.curves.parametric import FitError, NelsonSiegel, Svensson
+from yieldcurve.curves.protocol import DiscountCurve
+from yieldcurve.market.snapshot import Snapshot
 
 REFERENCE = date(2026, 7, 24)
 

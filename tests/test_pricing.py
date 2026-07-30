@@ -8,11 +8,11 @@ from datetime import date
 
 import pytest
 
-from curveengine.calendars import NullCalendar, USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap
-from curveengine.pricing import annuity, par_rate, price, ytm
+from yieldcurve.calendars import NullCalendar, USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import annuity, par_rate, price, ytm
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap
 
 REFERENCE = date(2026, 7, 24)
 

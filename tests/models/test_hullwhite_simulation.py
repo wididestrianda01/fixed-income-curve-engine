@@ -8,8 +8,8 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.curves.protocol import FlatCurve
-from curveengine.models.hullwhite import HullWhite
+from yieldcurve.curves.protocol import FlatCurve
+from yieldcurve.models.hullwhite import HullWhite
 
 ASOF = date(2026, 7, 24)
 SEED = 20260727

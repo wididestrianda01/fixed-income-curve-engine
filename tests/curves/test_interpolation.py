@@ -9,7 +9,7 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.curves.interpolation import (
+from yieldcurve.curves.interpolation import (
     CurveConstructionError,
     InterpMethod,
     InterpolatedDiscountCurve,

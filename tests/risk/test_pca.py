@@ -7,12 +7,12 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import FixedCouponBond
-from curveengine.market.snapshot import Snapshot
-from curveengine.risk.pca import PCAResult, daily_changes, fit_pca, pca_durations
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import FixedCouponBond
+from yieldcurve.market.snapshot import Snapshot
+from yieldcurve.risk.pca import PCAResult, daily_changes, fit_pca, pca_durations
 
 ASOF = date(2026, 7, 24)
 SEED = 20260727

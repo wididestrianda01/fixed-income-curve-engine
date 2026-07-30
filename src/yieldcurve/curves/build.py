@@ -12,13 +12,13 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from curveengine.calendars import NullCalendar, SwedenCalendar, USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.bootstrap import Quote, bootstrap
-from curveengine.curves.interpolation import InterpMethod, InterpolatedDiscountCurve
-from curveengine.curves.protocol import CurveSet
-from curveengine.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.calendars import NullCalendar, SwedenCalendar, USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.bootstrap import Quote, bootstrap
+from yieldcurve.curves.interpolation import InterpMethod, InterpolatedDiscountCurve
+from yieldcurve.curves.protocol import CurveSet
+from yieldcurve.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
+from yieldcurve.market.snapshot import Snapshot
 
 _FORECAST_TENOR = "3M"
 

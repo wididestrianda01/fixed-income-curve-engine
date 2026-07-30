@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from curveengine.conventions import (
+from yieldcurve.conventions import (
     Compounding,
     DayCount,
     discount_factor,

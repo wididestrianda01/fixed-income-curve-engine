@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from curveengine.market.snapshot import MissingDatasetError, Snapshot
+from yieldcurve.market.snapshot import MissingDatasetError, Snapshot
 
 
 def test_save_then_load_round_trips(tmp_path: Path) -> None:
@@ -22,7 +22,7 @@ def test_save_then_load_round_trips(tmp_path: Path) -> None:
 def test_load_missing_dataset_names_the_refresh_command(tmp_path: Path) -> None:
     snapshot = Snapshot(date=date(2026, 7, 24), root=tmp_path)
 
-    with pytest.raises(MissingDatasetError, match=r"curveengine\.market\.refresh"):
+    with pytest.raises(MissingDatasetError, match=r"yieldcurve\.market\.refresh"):
         snapshot.load("riksbank_bills")
 
 

@@ -3,7 +3,7 @@
 The algorithm is the same for every instrument type. Sort by maturity; for each
 quote in turn, every discount factor it depends on is already known except the one
 at its own maturity, so solve for that one by root-finding on the instrument's own
-pricing function. Instruments are priced by ``curveengine.pricing``, not by
+pricing function. Instruments are priced by ``yieldcurve.curves.pricing``, not by
 bespoke formulas here, which is what keeps the bootstrap consistent with
 valuation by construction rather than by coincidence.
 
@@ -22,15 +22,15 @@ from datetime import date
 import numpy as np
 from scipy.optimize import brentq
 
-from curveengine.conventions import year_fraction
-from curveengine.curves.interpolation import (
+from yieldcurve.conventions import year_fraction
+from yieldcurve.curves.interpolation import (
     CurveConstructionError,
     InterpMethod,
     InterpolatedDiscountCurve,
 )
-from curveengine.curves.protocol import CurveSet, curve_time
-from curveengine.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
-from curveengine.pricing import par_rate, price
+from yieldcurve.curves.pricing import par_rate, price
+from yieldcurve.curves.protocol import CurveSet, curve_time
+from yieldcurve.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
 
 _DF_BRACKET = (1e-8, 5.0)
 _SOLVER_TOLERANCE = 1e-15

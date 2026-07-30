@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "curveengine"
+name = "yieldcurve"
 version = "0.1.0"
 description = "Multi-curve fixed-income term structure construction, pricing and interest-rate risk"
 readme = "README.md"
@@ -39,7 +39,7 @@ app = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/curveengine"]
+packages = ["src/yieldcurve"]
 
 [tool.ruff]
 line-length = 100
@@ -69,7 +69,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=curveengine --cov-report=term-missing --cov-fail-under=80 --strict-markers"
+addopts = "--cov=yieldcurve --cov-report=term-missing --cov-fail-under=80 --strict-markers"
 markers = [
     "slow: Monte Carlo convergence and other long-running tests",
 ]

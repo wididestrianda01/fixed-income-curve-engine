@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.market.snapshot import Snapshot
 
 EXPECTED_COLUMNS = {
     "riksbank_bills": ["tenor", "maturity_date", "rate"],

@@ -20,11 +20,11 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from curveengine.curves.protocol import CurveSet
-from curveengine.instruments import Instrument
-from curveengine.pricing import price
-from curveengine.risk.keyrate import piecewise_linear
-from curveengine.risk.scenarios import Scenario, shift_curveset
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet
+from yieldcurve.instruments import Instrument
+from yieldcurve.risk.keyrate import piecewise_linear
+from yieldcurve.risk.scenarios import Scenario, shift_curveset
 
 _COMPONENT_NAMES = ("level", "slope", "curvature")
 _MIN_OBSERVATIONS_PER_COMPONENT = 30

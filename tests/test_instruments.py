@@ -7,10 +7,10 @@ from datetime import date
 
 import pytest
 
-from curveengine import instruments
-from curveengine.calendars import NullCalendar, USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap, tenor_to_frequency
+from yieldcurve import instruments
+from yieldcurve.calendars import NullCalendar, USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap, tenor_to_frequency
 
 
 def make_treasury() -> FixedCouponBond:

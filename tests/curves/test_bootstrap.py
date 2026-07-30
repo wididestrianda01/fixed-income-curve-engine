@@ -7,17 +7,17 @@ from datetime import date
 import numpy as np
 import pytest
 
-from curveengine.calendars import NullCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount, year_fraction
-from curveengine.curves.bootstrap import (
+from yieldcurve.calendars import NullCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount, year_fraction
+from yieldcurve.curves.bootstrap import (
     Quote,
     bootstrap,
     discount_factors_from_cashflow_matrix,
 )
-from curveengine.curves.interpolation import CurveConstructionError, InterpMethod
-from curveengine.curves.protocol import CurveSet, curve_time
-from curveengine.instruments import Bill, FixedCouponBond, VanillaSwap
-from curveengine.pricing import par_rate, price
+from yieldcurve.curves.interpolation import CurveConstructionError, InterpMethod
+from yieldcurve.curves.pricing import par_rate, price
+from yieldcurve.curves.protocol import CurveSet, curve_time
+from yieldcurve.instruments import Bill, FixedCouponBond, VanillaSwap
 
 REFERENCE = date(2026, 7, 24)
 ALL_METHODS = list(InterpMethod)
@@ -162,7 +162,7 @@ def test_matrix_form_agrees_with_the_sequential_bootstrap() -> None:
     square: np.ndarray = matrix[:, [payment_dates.index(m) for m in maturities]]
     assert square.shape == (3, 3)
 
-    from curveengine.curves.protocol import curve_time
+    from yieldcurve.curves.protocol import curve_time
 
     del square  # the aligned-date reduction below is the actual comparison
     reduced: np.ndarray = np.zeros((len(quotes), len(quotes)))

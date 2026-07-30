@@ -7,7 +7,7 @@ from datetime import date, timedelta
 import pytest
 import QuantLib as ql  # noqa: N813
 
-from curveengine.calendars import (
+from yieldcurve.calendars import (
     NullCalendar,
     SwedenCalendar,
     USGovernmentBondCalendar,

@@ -5,6 +5,7 @@ docs/superpowers/
 PLAN.md
 .codegraph/
 graphify-out/
+**/graphify-out/
 
 # --- Data ---
 # data/snapshots/ IS committed on purpose: small, public, dated market data

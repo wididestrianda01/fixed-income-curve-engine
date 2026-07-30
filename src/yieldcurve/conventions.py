@@ -15,7 +15,7 @@ import math
 from datetime import date, timedelta
 from enum import StrEnum
 
-from curveengine.calendars import Calendar
+from yieldcurve.calendars import Calendar
 
 
 class DayCount(StrEnum):

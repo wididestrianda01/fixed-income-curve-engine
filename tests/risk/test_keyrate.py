@@ -6,12 +6,12 @@ from datetime import date
 
 import pytest
 
-from curveengine.calendars import USGovernmentBondCalendar
-from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.curves.protocol import CurveSet, FlatCurve
-from curveengine.instruments import Bill, FixedCouponBond
-from curveengine.pricing import price
-from curveengine.risk.keyrate import (
+from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet, FlatCurve
+from yieldcurve.instruments import Bill, FixedCouponBond
+from yieldcurve.risk.keyrate import (
     SEK_KEY_RATES,
     USD_KEY_RATES,
     bucket_pnl,
@@ -19,8 +19,8 @@ from curveengine.risk.keyrate import (
     krd,
     piecewise_linear,
 )
-from curveengine.risk.scenarios import Scenario, shift_curveset
-from curveengine.risk.sensitivities import effective_duration
+from yieldcurve.risk.scenarios import Scenario, shift_curveset
+from yieldcurve.risk.sensitivities import effective_duration
 
 ASOF = date(2026, 7, 24)
 

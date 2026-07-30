@@ -7,24 +7,24 @@ from pathlib import Path
 
 import pytest
 
-from curveengine.curves.build import (
+from yieldcurve.curves.build import (
     CurveDataError,
     sek_government_curve,
     usd_curveset,
     usd_forecast_curve,
     usd_ois_curve,
 )
-from curveengine.curves.interpolation import InterpMethod
-from curveengine.market.snapshot import Snapshot
+from yieldcurve.curves.interpolation import InterpMethod
+from yieldcurve.market.snapshot import Snapshot
 
 pytestmark = pytest.mark.usefixtures("snapshot")
 
 
 def test_ois_curve_reprices_its_own_quotes(snapshot: Snapshot) -> None:
-    from curveengine.curves.build import usd_ois_quotes
-    from curveengine.curves.interpolation import InterpMethod
-    from curveengine.curves.protocol import CurveSet
-    from curveengine.pricing import par_rate
+    from yieldcurve.curves.build import usd_ois_quotes
+    from yieldcurve.curves.interpolation import InterpMethod
+    from yieldcurve.curves.pricing import par_rate
+    from yieldcurve.curves.protocol import CurveSet
 
     asof = date(2026, 7, 24)
     curve = usd_ois_curve(snapshot, asof, method=InterpMethod.LOG_LINEAR_DF)
@@ -82,7 +82,7 @@ def test_sek_curve_covers_the_key_rate_grid(snapshot: Snapshot) -> None:
 
 
 def test_basis_is_defined_at_every_requested_tenor(snapshot: Snapshot) -> None:
-    from curveengine.curves.build import government_swap_basis
+    from yieldcurve.curves.build import government_swap_basis
 
     tenors = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0)
     basis = government_swap_basis(snapshot, date(2026, 7, 24), tenors)
@@ -92,7 +92,7 @@ def test_basis_is_defined_at_every_requested_tenor(snapshot: Snapshot) -> None:
 
 
 def test_basis_is_of_a_plausible_magnitude(snapshot: Snapshot) -> None:
-    from curveengine.curves.build import government_swap_basis
+    from yieldcurve.curves.build import government_swap_basis
 
     basis = government_swap_basis(snapshot, date(2026, 7, 24), (2.0, 5.0, 10.0, 30.0))
 
@@ -102,7 +102,7 @@ def test_basis_is_of_a_plausible_magnitude(snapshot: Snapshot) -> None:
 def test_basis_compares_zeros_not_a_zero_against_a_par_yield(
     snapshot: Snapshot,
 ) -> None:
-    from curveengine.curves.build import government_swap_basis, usd_government_curve
+    from yieldcurve.curves.build import government_swap_basis, usd_government_curve
 
     asof = date(2026, 7, 24)
     gov = usd_government_curve(snapshot, asof)

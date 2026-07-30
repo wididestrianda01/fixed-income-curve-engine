@@ -19,10 +19,10 @@ from datetime import date
 from itertools import pairwise
 from typing import Final
 
-from curveengine.curves.protocol import CurveSet
-from curveengine.instruments import Instrument
-from curveengine.pricing import price
-from curveengine.risk.scenarios import Scenario, shift_curveset
+from yieldcurve.curves.pricing import price
+from yieldcurve.curves.protocol import CurveSet
+from yieldcurve.instruments import Instrument
+from yieldcurve.risk.scenarios import Scenario, shift_curveset
 
 SEK_KEY_RATES: Final[tuple[float, ...]] = (0.25, 0.5, 1.0, 2.0, 5.0, 7.0, 10.0)
 USD_KEY_RATES: Final[tuple[float, ...]] = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0)
