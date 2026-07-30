@@ -7,10 +7,10 @@ the library on one screen where they can be compared.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from itertools import pairwise
-from typing import cast
 
 from scipy.optimize import brentq
 
@@ -95,9 +95,15 @@ def _simple_forward(curve: DiscountCurve, t1: float, t2: float, tau: float) -> f
     Coupons accrue simply, so the projected rate must be the simple forward
     ``(df1/df2 - 1)/tau``, not the continuously compounded ``fwd``.
     """
+    if tau == 0.0:
+        return 0.0
     df1 = curve.df(t1)
     df2 = curve.df(t2)
     return (df1 / df2 - 1.0) / tau
+
+
+def _brentq(f: Callable[[float], float], a: float, b: float, **kwargs: object) -> float:
+    return float(brentq(f, a, b, **kwargs))
 
 
 def _price_swap(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
@@ -181,4 +187,4 @@ def ytm(bond: FixedCouponBond, dirty_price: float, asof: date) -> float:
     low, high = _YTM_BRACKET
     if residual(low) * residual(high) > 0.0:
         raise ValueError(f"No yield in [{low}, {high}] reproduces a dirty price of {dirty_price}")
-    return cast(float, brentq(residual, low, high, xtol=_YTM_TOLERANCE))
+    return _brentq(residual, low, high, xtol=_YTM_TOLERANCE)
