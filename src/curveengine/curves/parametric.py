@@ -71,6 +71,22 @@ class Svensson:
         l2 = _factor(t, tau2)
         return b0 + b1 * l1 + b2 * (l1 - math.exp(-t / tau1)) + b3 * (l2 - math.exp(-t / tau2))
 
+    def instantaneous_fwd(self, t: float) -> float:
+        """Closed-form instantaneous forward rate f(t) = d/dt[t * zero(t)].
+
+        f(t) = b0 + b1*e^{-t/tau1} + b2*(t/tau1)*e^{-t/tau1} + b3*(t/tau2)*e^{-t/tau2}
+        """
+        if t < 0.0:
+            raise ValueError(f"Curve time must be non-negative, got {t}")
+        b0, b1, b2, b3 = self.beta
+        tau1, tau2 = self.tau
+        return (
+            b0
+            + b1 * math.exp(-t / tau1)
+            + b2 * (t / tau1) * math.exp(-t / tau1)
+            + b3 * (t / tau2) * math.exp(-t / tau2)
+        )
+
     def df(self, t: float) -> float:
         if t < 0.0:
             raise ValueError(f"Curve time must be non-negative, got {t}")
