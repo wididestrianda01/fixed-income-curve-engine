@@ -24,6 +24,8 @@ short_bp = 300
 long_bp = 150
 citation = "EBA GL/2018/02, Table 1; BCBS d368 Annex 2, Table 2"
 
+# SEK falls into the same shock bucket as USD under EBA GL/2018/02
+# (Table 1, Category 1); the numbers are identical by design, not by mistake.
 [currency.SEK]
 parallel_bp = 200
 short_bp = 300

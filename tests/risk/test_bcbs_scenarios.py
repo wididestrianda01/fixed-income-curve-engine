@@ -13,7 +13,6 @@ from curveengine.curves.protocol import FlatCurve
 from curveengine.risk.scenarios import (
     ScenarioConfigError,
     bcbs_scenarios,
-    load_scenarios,
     shift_curve,
 )
 
@@ -85,12 +84,13 @@ def test_steepener_and_flattener_are_not_mirror_images() -> None:
     )
 
 
-def test_currencies_have_different_shock_sizes() -> None:
+def test_usd_and_sek_share_the_same_eba_bucket() -> None:
     usd = {s.name: s for s in bcbs_scenarios("USD")}["parallel_up"].shift(1.0)
     sek = {s.name: s for s in bcbs_scenarios("SEK")}["parallel_up"].shift(1.0)
 
-    assert (usd, sek) == pytest.approx((usd, sek))
-    assert usd > 0.0 and sek > 0.0
+    assert usd == sek
+    assert usd == pytest.approx(0.02)
+    assert sek == pytest.approx(0.02)
 
 
 def test_shocks_are_applied_to_a_curve_without_producing_negative_discount_factors() -> None:
@@ -109,6 +109,14 @@ def test_config_is_valid_toml_with_every_required_field() -> None:
         for field in ("parallel_bp", "short_bp", "long_bp", "citation"):
             assert field in block, f"{currency} missing {field}"
 
+    shape = config["shape"]
+    assert "short_decay_years" in shape, "missing short_decay_years"
+    assert "steepener" in shape, "missing steepener"
+    assert "flattener" in shape, "missing flattener"
+    for sub in ("steepener", "flattener"):
+        for field in ("short_weight", "long_weight", "citation"):
+            assert field in shape[sub], f"{sub} missing {field}"
+
 
 def test_a_config_missing_a_currency_raises_rather_than_defaulting(
     tmp_path: Path,
@@ -117,5 +125,4 @@ def test_a_config_missing_a_currency_raises_rather_than_defaulting(
     empty.write_text("[currency]\n[shape]\nshort_decay_years = 4.0\n", encoding="utf-8")
 
     with pytest.raises(ScenarioConfigError, match="JPY"):
-        load_scenarios(empty)
         bcbs_scenarios("JPY", path=empty)

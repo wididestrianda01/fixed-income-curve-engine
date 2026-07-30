@@ -90,8 +90,22 @@ def parallel(size: float) -> Scenario:
     return Scenario(name=f"parallel {sign}{abs(size) * 1e4:.0f}bp", shift=lambda _t: size)
 
 
-_CONFIG_PATH = Path(__file__).resolve().parents[3] / "scenarios.toml"
 _BP = 1e-4
+
+
+def _find_config(start: Path | None = None) -> Path:
+    d = (start or Path(__file__).resolve().parent).resolve()
+    for _ in range(10):
+        candidate = d / "scenarios.toml"
+        if candidate.exists():
+            return candidate
+        if (d / "pyproject.toml").exists():
+            raise ScenarioConfigError("Reached project root without finding scenarios.toml")
+        d = d.parent
+    raise ScenarioConfigError("Exhausted 10 levels without finding scenarios.toml")
+
+
+_CONFIG_PATH = _find_config()
 
 
 class ScenarioConfigError(ValueError):

@@ -67,6 +67,11 @@ def hat(keys: Sequence[float], index: int, size: float) -> Scenario:
 def piecewise_linear(
     keys: Sequence[float], shifts: Mapping[float, float]
 ) -> Callable[[float], float]:
+    """A continuous, piecewise-linear shift built from Ho (1992) hats.
+
+    The shift at each key equals *shifts[key]*, with linear interpolation
+    between neighbouring keys and flat extrapolation beyond the endpoints.
+    """
     _validate(keys)
     missing = [k for k in keys if k not in shifts]
     if missing:
@@ -86,6 +91,13 @@ def krd(
     *,
     bump: float = _BASIS_POINT,
 ) -> dict[float, float]:
+    """Key-rate durations via central finite difference.
+
+    Each key rate is bumped +/- *bump* (a triangular Ho 1992 shift).  The
+    result is tenors → duration in years (positive for a long position).
+
+    Returns ``{key_tenor: duration}``.
+    """
     _validate(keys)
     base = price(instrument, curves, asof).dirty
     result: dict[float, float] = {}
@@ -105,6 +117,12 @@ def bucket_pnl(
     keys: Sequence[float],
     shifts: Mapping[float, float],
 ) -> float:
+    """First-order P&L from key-rate shifts, in base-currency units.
+
+    *shifts* maps key tenors to curve changes in decimals.  The approximation is
+    ``-price * sum(krd * shift)`` and is exact only for infinitesimal moves;
+    for larger moves the bucket error should be checked against a full reprice.
+    """
     durations = krd(instrument, curves, asof, keys)
     base = price(instrument, curves, asof).dirty
     return -base * sum(durations[k] * shifts[k] for k in durations)
