@@ -19,6 +19,8 @@ from curveengine.instruments import FRN
 from curveengine.market.snapshot import Snapshot
 from curveengine.pricing import price
 
+_CALENDAR = USGovernmentBondCalendar()
+
 ASOF = date(2026, 7, 24)
 
 
@@ -30,7 +32,7 @@ def frn() -> FRN:
         maturity=date(2031, 7, 24),
         frequency=4,
         day_count=DayCount.ACT_360,
-        calendar=USGovernmentBondCalendar(),
+        calendar=_CALENDAR,
         bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
         index_tenor="3M",
         spread=0.0050,
@@ -75,7 +77,7 @@ def test_zero_spread_frn_is_par_under_a_single_curve(snapshot: Snapshot) -> None
         maturity=date(2031, 7, 24),
         frequency=4,
         day_count=DayCount.ACT_360,
-        calendar=USGovernmentBondCalendar(),
+        calendar=_CALENDAR,
         bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
         index_tenor="3M",
         spread=0.0,
@@ -88,7 +90,14 @@ def test_zero_spread_frn_is_par_under_a_single_curve(snapshot: Snapshot) -> None
 def test_the_pricer_was_not_modified_for_this_phase() -> None:
     """An architecture test. ``pricing.py`` must contain no reference to any
     module introduced in Phase 3; multi-curve support is a data shape, not a
-    code path."""
+    code path.
+
+    The substring check is intentionally coarse: a grep-level gate that fails
+    if anyone adds a Phase-3 import or attribute reference to pricing.py,
+    including through indirect names or comments. False positives (innocent
+    mentions of "build" or "snapshot") are acceptable — the test tells the
+    developer to move that concern out of the pricing module.
+    """
     import curveengine.pricing as pricing_module
 
     source = Path(pricing_module.__file__).read_text(encoding="utf-8")

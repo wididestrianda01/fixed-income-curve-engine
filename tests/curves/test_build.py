@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -111,9 +112,7 @@ def test_basis_compares_zeros_not_a_zero_against_a_par_yield(
     assert basis[10.0] == pytest.approx(ois.zero(10.0) - gov.zero(10.0), abs=1e-12)
 
 
-def test_missing_dataset_raises_a_named_error(snapshot: Snapshot, tmp_path: object) -> None:
-    from pathlib import Path
-
+def test_missing_dataset_raises_a_named_error(snapshot: Snapshot, tmp_path: Path) -> None:
     empty = Snapshot(date=date(2026, 7, 24), root=Path(str(tmp_path)))
 
     with pytest.raises((CurveDataError, FileNotFoundError)):
