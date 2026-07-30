@@ -20,6 +20,7 @@ def test_parallel_shift_moves_every_zero_by_the_same_amount() -> None:
 
     shifted = shift_curve(base, parallel(0.01))
 
+    assert shifted.reference_date == ASOF
     for t in (0.25, 1.0, 5.0, 30.0):
         assert shifted.zero(t) == pytest.approx(0.04, abs=1e-12)
 
@@ -113,6 +114,14 @@ def test_scenario_is_frozen() -> None:
 
     with pytest.raises(AttributeError):
         scenario.name = "mutated"  # type: ignore[misc]
+
+
+def test_shifted_fwd_rejects_non_increasing_tenors() -> None:
+    base = FlatCurve(reference_date=ASOF, rate=0.03)
+    shifted = shift_curve(base, parallel(0.01))
+
+    with pytest.raises(ValueError, match=r"fwd requires t2 > t1"):
+        shifted.fwd(2.0, 1.0)
 
 
 def test_shifting_a_single_curveset_shifts_the_one_curve() -> None:
