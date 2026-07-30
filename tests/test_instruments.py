@@ -10,7 +10,7 @@ import pytest
 from curveengine import instruments
 from curveengine.calendars import NullCalendar, USGovernmentBondCalendar
 from curveengine.conventions import BusinessDayConvention, DayCount
-from curveengine.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap
+from curveengine.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap, tenor_to_frequency
 
 
 def make_treasury() -> FixedCouponBond:
@@ -105,6 +105,43 @@ def test_frn_cannot_generate_its_own_cashflows() -> None:
 
     with pytest.raises(NotImplementedError, match="forecast curve"):
         frn.cashflows(asof=date(2026, 7, 24))
+
+
+def test_frn_coupon_dates_uses_same_schedule_shape_as_bond() -> None:
+    frn = FRN(
+        issue=date(2026, 3, 16),
+        maturity=date(2029, 3, 16),
+        frequency=4,
+        day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
+        index_tenor="3M",
+        spread=0.0025,
+    )
+    dates = frn.coupon_dates()
+    assert dates[0] == date(2026, 3, 16)
+    assert dates[-1] == date(2029, 3, 16)
+
+
+def test_bill_returns_empty_flows_when_matured() -> None:
+    bill = Bill(maturity=date(2026, 1, 1))
+    assert bill.cashflows(asof=date(2026, 7, 24)) == ()
+
+
+def test_accrual_period_raises_when_asof_is_outside_bond_life() -> None:
+    bond = make_treasury()
+    with pytest.raises(ValueError, match="outside"):
+        bond.accrual_period(asof=date(2020, 1, 1))
+
+
+def test_tenor_to_frequency_rejects_overnight_tenor() -> None:
+    with pytest.raises(ValueError, match="Overnight"):
+        tenor_to_frequency("ON")
+
+
+def test_tenor_to_frequency_rejects_unsupported_tenor() -> None:
+    with pytest.raises(ValueError, match="Unsupported"):
+        tenor_to_frequency("9M")
 
 
 def test_swap_schedules_have_the_expected_period_counts() -> None:

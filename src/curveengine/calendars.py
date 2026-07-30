@@ -49,9 +49,11 @@ def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
         first = date(year, month, 1)
         offset = (weekday - first.weekday()) % 7
         return first + timedelta(days=offset + 7 * (n - 1))
-    next_month = date(year + month // 12, month % 12 + 1, 1)
-    last = next_month - timedelta(days=1)
-    return last - timedelta(days=(last.weekday() - weekday) % 7)
+    if n == -1:
+        next_month = date(year + month // 12, month % 12 + 1, 1)
+        last = next_month - timedelta(days=1)
+        return last - timedelta(days=(last.weekday() - weekday) % 7)
+    raise ValueError(f"n must be a positive integer or -1, got {n}")
 
 
 class SwedenCalendar:
@@ -133,8 +135,6 @@ def _us_bond_holidays(year: int) -> frozenset[date]:
     # Independence Day, Christmas Day and Juneteenth (not New Year's Day or
     # Veterans Day, per QuantLib UnitedStates.GovernmentBond parity).
     _sat_adjusted = {date(year, 7, 4), date(year, 12, 25)}
-    if year >= 2022:
-        _sat_adjusted.add(date(year, 6, 19))
     fixed_names = [
         date(year, 1, 1),  # New Year's Day
         date(year, 7, 4),  # Independence Day
@@ -142,6 +142,7 @@ def _us_bond_holidays(year: int) -> frozenset[date]:
         date(year, 12, 25),  # Christmas Day
     ]
     if year >= 2022:
+        _sat_adjusted.add(date(year, 6, 19))
         fixed_names.append(date(year, 6, 19))  # Juneteenth
     observed: set[date] = set()
     for d in fixed_names:

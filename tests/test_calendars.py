@@ -90,3 +90,9 @@ def test_us_government_bond_calendar_matches_quantlib_2020_to_2036() -> None:
     # holiday every year. Exclude these known QuantLib discrepancies.
     bad = [d for d in bad if d not in _QL_GOOD_FRIDAY_BUGS]
     assert bad == [], f"US calendar disagrees with QuantLib on: {bad[:20]}"
+
+
+def test_calendar_repr_identifies_the_class() -> None:
+    assert repr(SwedenCalendar()) == "SwedenCalendar()"
+    assert repr(USGovernmentBondCalendar()) == "USGovernmentBondCalendar()"
+    assert repr(NullCalendar()) == "NullCalendar()"

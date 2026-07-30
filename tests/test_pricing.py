@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -114,7 +115,7 @@ def test_par_rate_makes_a_swap_worth_nothing(flat: CurveSet) -> None:
     )
 
     fair = par_rate(swap, flat, asof=REFERENCE)
-    at_par = price(VanillaSwap(**{**swap.__dict__, "fixed_rate": fair}), flat, asof=REFERENCE)
+    at_par = price(replace(swap, fixed_rate=fair), flat, asof=REFERENCE)
 
     assert at_par.dirty == pytest.approx(0.0, abs=1e-6)
     assert annuity(swap, flat, asof=REFERENCE) > 0.0

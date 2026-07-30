@@ -80,3 +80,14 @@ def test_schedule_rejects_a_frequency_that_does_not_divide_twelve() -> None:
             calendar=NullCalendar(),
             bdc=BusinessDayConvention.FOLLOWING,
         )
+
+
+def test_schedule_rejects_end_not_after_start() -> None:
+    with pytest.raises(ValueError, match="after start"):
+        schedule(
+            date(2026, 1, 1),
+            date(2026, 1, 1),
+            frequency=1,
+            calendar=NullCalendar(),
+            bdc=BusinessDayConvention.UNADJUSTED,
+        )

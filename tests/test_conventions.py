@@ -89,6 +89,23 @@ def test_discount_factor_per_compounding_basis(compounding: Compounding, expecte
     assert discount_factor(0.05, 1.0, compounding) == pytest.approx(expected)
 
 
+def test_act_act_icma_rejects_non_positive_period() -> None:
+    with pytest.raises(ValueError, match="period_end"):
+        year_fraction(
+            date(2026, 5, 15),
+            date(2026, 2, 15),
+            DayCount.ACT_ACT_ICMA,
+            period_start=date(2026, 2, 15),
+            period_end=date(2026, 2, 15),
+            frequency=2,
+        )
+
+
+def test_to_continuous_rejects_non_positive_t() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        to_continuous(0.05, 0.0, Compounding.SIMPLE)
+
+
 def test_to_continuous_inverts_discount_factor() -> None:
     """A quote converted to continuous compounding must discount identically."""
     for compounding in Compounding:
