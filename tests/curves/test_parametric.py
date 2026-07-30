@@ -149,3 +149,15 @@ def test_nelson_siegel_fits_a_curve_it_can_represent_almost_exactly() -> None:
 def test_a_non_positive_tau_is_rejected_at_construction() -> None:
     with pytest.raises(FitError, match="positive"):
         Svensson(beta=(0.03, -0.01, 0.0, 0.0), tau=(0.0, 5.0), reference_date=REFERENCE)
+
+
+def test_a_negative_curve_time_is_rejected_by_both_families() -> None:
+    """Curve time runs forward from the reference date. A negative one is not a
+    date in the past, it is a caller error — the functional forms would happily
+    return a number for it, which is exactly why the guard has to be explicit."""
+    nss = Svensson(beta=(0.03, -0.01, 0.02, -0.005), tau=(1.5, 8.0), reference_date=REFERENCE)
+    ns = NelsonSiegel(beta=(0.03, -0.01, 0.02), tau=2.0, reference_date=REFERENCE)
+
+    for call in (nss.zero, nss.df, ns.zero, ns.df):
+        with pytest.raises(ValueError, match="non-negative"):
+            call(-1.0)

@@ -1,13 +1,19 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.16.0
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+  # mypy runs in the project environment rather than an isolated one: --strict
+  # needs to resolve curveengine itself, and a mirrors-mypy hook can only be fed
+  # third-party stubs. Settings (strict, files, per-module overrides) all come
+  # from pyproject.toml, so the hook and a bare `mypy` agree by construction.
+  - repo: local
     hooks:
       - id: mypy
-        additional_dependencies: [numpy, pandas-stubs, types-requests, pytest]
-        args: [--strict]
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false

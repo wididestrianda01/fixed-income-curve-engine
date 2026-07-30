@@ -72,21 +72,46 @@ def _price_frn(frn: FRN, curves: CurveSet, asof: date) -> PricingResult:
     """
     forecast = curves.forecast_for(frn.index_tenor)
     discount = curves.discount
-    dates = [d for d in frn.coupon_dates() if d > asof]
-    if not dates:
+    dates = frn.coupon_dates()
+    periods = [(start, end) for start, end in pairwise(dates) if end > asof]
+    if not periods:
         return PricingResult(dirty=0.0, clean=0.0, accrued=0.0)
 
-    period_start = max(d for d in frn.coupon_dates() if d <= asof) if dates[0] != asof else asof
     dirty = 0.0
-    previous = period_start
-    for payment_date in dates:
-        tau = year_fraction(previous, payment_date, frn.day_count)
-        t1, t2 = curve_time(asof, previous), curve_time(asof, payment_date)
-        projected = _simple_forward(forecast, max(t1, 0.0), t2, tau)
-        dirty += frn.face * (projected + frn.spread) * tau * discount.df(t2)
-        previous = payment_date
+    accrued = 0.0
+    for period_start, payment_date in periods:
+        tau = year_fraction(period_start, payment_date, frn.day_count)
+        projected = _projected_rate(forecast, period_start, payment_date, asof, frn.day_count)
+        coupon = frn.face * (projected + frn.spread)
+        dirty += coupon * tau * discount.df(curve_time(asof, payment_date))
+        if period_start < asof:
+            accrued = coupon * year_fraction(period_start, asof, frn.day_count)
     dirty += frn.face * discount.df(curve_time(asof, dates[-1]))
-    return PricingResult(dirty=dirty, clean=dirty, accrued=0.0)
+    return PricingResult(dirty=dirty, clean=dirty - accrued, accrued=accrued)
+
+
+def _projected_rate(
+    forecast: DiscountCurve,
+    period_start: date,
+    payment_date: date,
+    asof: date,
+    day_count: DayCount,
+) -> float:
+    """The rate a floating period accrues at, as seen from ``asof``.
+
+    A period that started before ``asof`` fixed its rate on a date the curve
+    cannot reach, and this library holds no historical fixings. The stand-in is
+    the forward over what is left of the period, ``[asof, payment_date]`` —
+    annualised over *that* stub, not over the full period. Dividing a stub
+    numerator by the full-period accrual would scale the coupon by the fraction
+    of the period still outstanding, so the leg would bleed value purely as the
+    valuation date advanced.
+    """
+    accrual_start = max(period_start, asof)
+    horizon = year_fraction(accrual_start, payment_date, day_count)
+    t1 = curve_time(asof, accrual_start)
+    t2 = curve_time(asof, payment_date)
+    return _simple_forward(forecast, t1, t2, horizon)
 
 
 def _simple_forward(curve: DiscountCurve, t1: float, t2: float, tau: float) -> float:
@@ -122,17 +147,15 @@ def _floating_leg_pv(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> f
     discount = curves.discount
     tenor = "ON" if isinstance(swap, OIS) else swap.float_tenor
     forecast = discount if isinstance(swap, OIS) else curves.forecast_for(tenor)
-    day_count = DayCount.ACT_360 if isinstance(swap, OIS) else swap.float_day_count
+    day_count = swap.float_day_count
     dates = swap.float_schedule()
     total = 0.0
     for previous, payment_date in pairwise(dates):
         if payment_date <= asof:
             continue
         tau = year_fraction(previous, payment_date, day_count)
-        t1 = max(curve_time(asof, previous), 0.0)
-        t2 = curve_time(asof, payment_date)
-        projected = _simple_forward(forecast, t1, t2, tau)
-        total += swap.notional * projected * tau * discount.df(t2)
+        projected = _projected_rate(forecast, previous, payment_date, asof, day_count)
+        total += swap.notional * projected * tau * discount.df(curve_time(asof, payment_date))
     return total
 
 
