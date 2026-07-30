@@ -14,7 +14,6 @@ from curveengine.curves.protocol import FlatCurve
 from curveengine.models.hullwhite import HullWhite, ModelError
 
 ASOF = date(2026, 7, 24)
-SEED = 20260727
 
 
 @pytest.fixture

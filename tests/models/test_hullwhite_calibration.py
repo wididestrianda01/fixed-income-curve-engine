@@ -26,8 +26,8 @@ def test_calibration_recovers_planted_parameters() -> None:
 
     result = calibrate(curve, swaptions, vols, ASOF)
 
-    assert result.a == pytest.approx(0.07, rel=5e-3)
-    assert result.sigma == pytest.approx(0.011, rel=5e-3)
+    assert result.a == pytest.approx(0.07, rel=1e-3)
+    assert result.sigma == pytest.approx(0.011, rel=1e-3)
     assert result.rmse_vol_bp < 0.01
 
 
@@ -94,21 +94,24 @@ def _synthetic_grid() -> tuple[tuple, tuple]:  # type: ignore[type-arg]
     curve = FlatCurve(reference_date=ASOF, rate=0.03)
     truth = HullWhite(curve=curve, a=0.07, sigma=0.011)
 
-    end = date(2036, 7, 24)
-    expiries = (
-        date(2027, 7, 24),
-        date(2028, 7, 24),
-        date(2031, 7, 24),
-        date(2033, 7, 24),
-    )
     strike = 0.03
+
+    expiry_maturity = (
+        (date(2027, 7, 24), date(2030, 7, 24)),
+        (date(2028, 7, 24), date(2036, 7, 24)),
+        (date(2030, 7, 24), date(2033, 7, 24)),
+        (date(2031, 7, 24), date(2036, 7, 24)),
+        (date(2031, 7, 24), date(2051, 7, 24)),
+        (date(2033, 7, 24), date(2036, 7, 24)),
+        (date(2035, 7, 24), date(2056, 7, 24)),
+    )
 
     swaptions = tuple(
         Swaption(
             expiry=expiry,
             swap=VanillaSwap(
                 start=expiry,
-                maturity=end,
+                maturity=maturity,
                 fixed_rate=strike,
                 fixed_frequency=2,
                 fixed_day_count=DayCount.THIRTY_360_BOND,
@@ -121,7 +124,7 @@ def _synthetic_grid() -> tuple[tuple, tuple]:  # type: ignore[type-arg]
             strike=strike,
             pay_fixed=True,
         )
-        for expiry in expiries
+        for expiry, maturity in expiry_maturity
     )
     vols = tuple(truth.swaption_normal_vol(s, ASOF) for s in swaptions)
 

@@ -43,7 +43,7 @@ from curveengine.curves.protocol import CurveSet, DiscountCurve, curve_time
 from curveengine.instruments import Swaption, VanillaSwap
 from curveengine.market.snapshot import Snapshot
 
-_FWD_STEP = 1e-5
+_FWD_STEP = 1e-5  # finite-difference epsilon for instantaneous forward, not 1-day step
 
 _SMALL_A = 1e-8
 
@@ -186,7 +186,8 @@ class HullWhite:
         else:
             paths = self.simulate([0.0, *grid], n_paths, seed=seed)[:, 1:]
         integral = np.trapezoid(paths, x=np.asarray(grid), axis=1)
-        return np.exp(-integral)
+        result: npt.NDArray[np.float64] = np.exp(-integral)
+        return result
 
     def zbo(self, expiry: float, maturity: float, strike: float, *, call: bool) -> float:
         if not 0.0 <= expiry <= maturity:
@@ -215,7 +216,7 @@ class HullWhite:
         notional = swap.notional
         amounts = [flow.amount / notional for flow in flows]
         amounts[-1] += 1.0
-        fixed = sum(a * self.zcb(t, tenor, r) for a, tenor in zip(amounts, times, strict=False))
+        fixed = sum(a * self.zcb(t, tenor, r) for a, tenor in zip(amounts, times, strict=True))
         return notional * (1.0 - fixed)
 
     def swaption(self, swaption: Swaption, asof: date) -> float:
@@ -230,7 +231,7 @@ class HullWhite:
 
         def swap_value(r: float) -> float:
             fixed = sum(
-                a * self.zcb(expiry, tenor, r) for a, tenor in zip(amounts, times, strict=False)
+                a * self.zcb(expiry, tenor, r) for a, tenor in zip(amounts, times, strict=True)
             )
             return 1.0 - fixed
 
@@ -240,7 +241,7 @@ class HullWhite:
         call = not swaption.pay_fixed
         return notional * sum(
             a * self.zbo(expiry, tenor, k, call=call)
-            for a, tenor, k in zip(amounts, times, strikes, strict=False)
+            for a, tenor, k in zip(amounts, times, strikes, strict=True)
         )
 
     def swaption_normal_vol(self, swaption: Swaption, asof: date) -> float:
