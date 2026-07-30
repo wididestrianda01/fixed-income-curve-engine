@@ -33,11 +33,12 @@ from datetime import date
 
 import numpy as np
 import numpy.typing as npt
-from scipy.optimize import brentq
+from scipy.optimize import brentq, least_squares
 from scipy.stats import norm
 
 from curveengine.curves.protocol import CurveSet, DiscountCurve, curve_time
 from curveengine.instruments import Swaption, VanillaSwap
+from curveengine.market.snapshot import Snapshot
 
 _FWD_STEP = 1e-5
 
@@ -50,6 +51,18 @@ class ModelError(ValueError):
 
 class CalibrationError(ModelError):
     """Calibration failed or the provided instruments are inconsistent."""
+
+
+@dataclass(frozen=True)
+class CalibrationResult:
+    """Fitted parameters and the fit quality, in market units."""
+
+    a: float
+    sigma: float
+    rmse_vol_bp: float
+    n_instruments: int
+    model_vols: tuple[float, ...]
+    market_vols: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -238,3 +251,105 @@ class HullWhite:
             swaption.swap.notional * annuity(swaption.swap, curves, asof)
         )
         return bachelier_vol(undiscounted, forward, swaption.strike, expiry, pay=swaption.pay_fixed)
+
+
+def calibrate(
+    curve: DiscountCurve,
+    swaptions: Sequence[Swaption],
+    market_vols: Sequence[float],
+    asof: date,
+    *,
+    initial: tuple[float, float] = (0.05, 0.01),
+) -> CalibrationResult:
+    if len(swaptions) != len(market_vols):
+        raise ValueError(
+            f"swaptions and market_vols must be the same length, got "
+            f"{len(swaptions)} and {len(market_vols)}"
+        )
+    if not swaptions:
+        raise ValueError("At least one swaption is required")
+
+    def residuals(params: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        a, sigma = float(params[0]), float(params[1])
+        model = HullWhite(curve=curve, a=a, sigma=sigma)
+        return np.array(
+            [
+                model.swaption_normal_vol(s, asof) - v
+                for s, v in zip(swaptions, market_vols, strict=False)
+            ]
+        )
+
+    fit = least_squares(
+        residuals,
+        x0=np.array(initial),
+        bounds=(np.array([1e-4, 1e-5]), np.array([2.0, 0.20])),
+        xtol=1e-14,
+        ftol=1e-14,
+    )
+    a, sigma = float(fit.x[0]), float(fit.x[1])
+    model = HullWhite(curve=curve, a=a, sigma=sigma)
+    model_vols = tuple(model.swaption_normal_vol(s, asof) for s in swaptions)
+    errors = np.array(model_vols) - np.array(market_vols)
+    return CalibrationResult(
+        a=a,
+        sigma=sigma,
+        rmse_vol_bp=float(np.sqrt((errors**2).mean()) * 1e4),
+        n_instruments=len(swaptions),
+        model_vols=model_vols,
+        market_vols=tuple(float(v) for v in market_vols),
+    )
+
+
+def atm_swaption_grid(
+    snapshot: Snapshot, asof: date, curve: DiscountCurve
+) -> tuple[tuple[Swaption, ...], tuple[float, ...]]:
+    from curveengine.calendars import USGovernmentBondCalendar
+    from curveengine.conventions import BusinessDayConvention, DayCount
+    from curveengine.instruments import Swaption, VanillaSwap
+    from curveengine.pricing import par_rate
+
+    data = snapshot.load("cme_swaption_vols")
+    calendar = USGovernmentBondCalendar()
+    bdc = BusinessDayConvention.MODIFIED_FOLLOWING
+
+    curves = CurveSet.single(curve)
+
+    swaptions: list[Swaption] = []
+    vols: list[float] = []
+
+    for _, row in data.iterrows():
+        expiry_date = date.fromisoformat(row["expiry"])
+        maturity_date = date.fromisoformat(row["maturity"])
+        vol_bp = float(row["vol"])
+
+        swap = VanillaSwap(
+            start=expiry_date,
+            maturity=maturity_date,
+            fixed_rate=0.0,
+            fixed_frequency=2,
+            fixed_day_count=DayCount.THIRTY_360_BOND,
+            float_tenor="3M",
+            float_day_count=DayCount.ACT_360,
+            calendar=calendar,
+            bdc=bdc,
+            notional=1.0,
+        )
+        strike = par_rate(swap, curves, asof)
+
+        swap = VanillaSwap(
+            start=expiry_date,
+            maturity=maturity_date,
+            fixed_rate=strike,
+            fixed_frequency=2,
+            fixed_day_count=DayCount.THIRTY_360_BOND,
+            float_tenor="3M",
+            float_day_count=DayCount.ACT_360,
+            calendar=calendar,
+            bdc=bdc,
+            notional=1.0,
+        )
+        swaption = Swaption(expiry=expiry_date, swap=swap, strike=strike, pay_fixed=True)
+        swaptions.append(swaption)
+        vols.append(vol_bp / 1e4)
+
+    return tuple(swaptions), tuple(vols)
