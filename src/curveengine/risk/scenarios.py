@@ -10,9 +10,11 @@ identity rather than a coincidence.
 from __future__ import annotations
 
 import math
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from curveengine.curves.protocol import CurveSet, DiscountCurve
 
@@ -86,3 +88,69 @@ def parallel(size: float) -> Scenario:
     """A flat shift of ``size`` decimals at every tenor."""
     sign = "+" if size >= 0 else "-"
     return Scenario(name=f"parallel {sign}{abs(size) * 1e4:.0f}bp", shift=lambda _t: size)
+
+
+_CONFIG_PATH = Path(__file__).resolve().parents[3] / "scenarios.toml"
+_BP = 1e-4
+
+
+class ScenarioConfigError(ValueError):
+    """scenarios.toml is missing or does not describe the requested shock."""
+
+
+def load_scenarios(path: Path | None = None) -> dict[str, object]:
+    target = path or _CONFIG_PATH
+    if not target.exists():
+        raise ScenarioConfigError(f"No scenario configuration at {target}")
+    with target.open("rb") as handle:
+        return tomllib.load(handle)
+
+
+def bcbs_scenarios(currency: str, *, path: Path | None = None) -> tuple[Scenario, ...]:
+    config = load_scenarios(path)
+    currencies: dict[str, dict[str, object]] = config.get("currency", {})  # type: ignore[assignment]
+    if currency not in currencies:
+        raise ScenarioConfigError(
+            f"{currency} is not in scenarios.toml; add its row from BCBS d368 "
+            "Annex 2 rather than reusing another currency's sizes"
+        )
+    block = currencies[currency]
+    shape: dict[str, object] = config["shape"]  # type: ignore[assignment]
+    decay = float(shape["short_decay_years"])  # type: ignore[arg-type]
+    citation = str(block["citation"])
+
+    parallel_size = float(block["parallel_bp"]) * _BP  # type: ignore[arg-type]
+    short_size = float(block["short_bp"]) * _BP  # type: ignore[arg-type]
+    long_size = float(block["long_bp"]) * _BP  # type: ignore[arg-type]
+
+    def short_factor(t: float) -> float:
+        return math.exp(-t / decay)
+
+    def long_factor(t: float) -> float:
+        return 1.0 - math.exp(-t / decay)
+
+    steep: dict[str, object] = shape["steepener"]  # type: ignore[assignment]
+    flat: dict[str, object] = shape["flattener"]  # type: ignore[assignment]
+    steep_short, steep_long = float(steep["short_weight"]), float(steep["long_weight"])  # type: ignore[arg-type]
+    flat_short, flat_long = float(flat["short_weight"]), float(flat["long_weight"])  # type: ignore[arg-type]
+
+    return (
+        Scenario("parallel_up", lambda t: parallel_size, citation),
+        Scenario("parallel_down", lambda t: -parallel_size, citation),
+        Scenario("short_up", lambda t: short_size * short_factor(t), citation),
+        Scenario("short_down", lambda t: -short_size * short_factor(t), citation),
+        Scenario(
+            "steepener",
+            lambda t: (
+                steep_short * short_size * short_factor(t) + steep_long * long_size * long_factor(t)
+            ),
+            str(steep["citation"]),
+        ),
+        Scenario(
+            "flattener",
+            lambda t: (
+                flat_short * short_size * short_factor(t) + flat_long * long_size * long_factor(t)
+            ),
+            str(flat["citation"]),
+        ),
+    )

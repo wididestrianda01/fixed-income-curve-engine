@@ -1,0 +1,31 @@
+# BCBS d368, "Interest rate risk in the banking book", April 2016.
+# Shock sizes and shape coefficients transcribed from Annex 2. Every row cites
+# the paragraph it came from. Do not edit a number without updating its
+# citation, and do not add a currency without reading its row in the Annex.
+
+[shape]
+# The short-rate scalar: shocks decay as exp(-t / short_decay_years).
+short_decay_years = 4.0
+citation = "BCBS d368 Annex 2, para 32 (x = 4)"
+
+[shape.steepener]
+short_weight = -0.65
+long_weight = 0.9
+citation = "BCBS d368 Annex 2, para 32"
+
+[shape.flattener]
+short_weight = 0.8
+long_weight = -0.6
+citation = "BCBS d368 Annex 2, para 32"
+
+[currency.USD]
+parallel_bp = 200
+short_bp = 300
+long_bp = 150
+citation = "EBA GL/2018/02, Table 1; BCBS d368 Annex 2, Table 2"
+
+[currency.SEK]
+parallel_bp = 200
+short_bp = 300
+long_bp = 150
+citation = "EBA GL/2018/02, Table 1; BCBS d368 Annex 2, Table 2"
