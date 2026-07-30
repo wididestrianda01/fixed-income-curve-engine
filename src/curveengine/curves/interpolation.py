@@ -28,7 +28,7 @@ from __future__ import annotations
 import itertools
 import math
 from bisect import bisect_left
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from enum import StrEnum
 
@@ -60,6 +60,7 @@ class InterpolatedDiscountCurve:
     times: tuple[float, ...]
     dfs: tuple[float, ...]
     method: InterpMethod
+    _cached_spline: CubicSpline = field(init=False, repr=False, compare=False, default=None)
 
     def __post_init__(self) -> None:
         if len(self.times) != len(self.dfs):
@@ -77,6 +78,9 @@ class InterpolatedDiscountCurve:
             raise CurveConstructionError(f"Knot times must be strictly increasing: {self.times}")
         if any(df <= 0.0 for df in self.dfs):
             raise CurveConstructionError(f"Discount factors must be positive: {self.dfs}")
+        knots = np.array((0.0, *self.times))
+        logs = np.array((0.0, *(math.log(df) for df in self.dfs)))
+        object.__setattr__(self, "_cached_spline", CubicSpline(knots, logs, bc_type="natural"))
 
     # --- the DiscountCurve contract -------------------------------------------
 
@@ -144,9 +148,8 @@ class InterpolatedDiscountCurve:
         return float(spline(t))
 
     def _spline(self) -> CubicSpline:
-        knots = np.array((0.0, *self.times))
-        logs = np.array((0.0, *(math.log(df) for df in self.dfs)))
-        return CubicSpline(knots, logs, bc_type="natural")
+        assert self._cached_spline is not None, "spline not built in __post_init__"
+        return self._cached_spline
 
     def _monotone_convex(self, t: float) -> float:
         """Hagan-West monotone convex, integrated to a log discount factor.

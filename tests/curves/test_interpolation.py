@@ -46,7 +46,7 @@ def test_df_at_zero_is_one(method: InterpMethod) -> None:
 def test_discount_factors_decrease_with_time(method: InterpMethod) -> None:
     curve = build(method)
     grid = np.linspace(0.01, 10.0, 400)
-    values = [curve.df(t) for t in grid.tolist()]  # type: ignore[attr-defined]
+    values = [curve.df(float(t)) for t in grid]  # type: ignore[attr-defined]
 
     assert all(later < earlier for earlier, later in itertools.pairwise(values))
 
