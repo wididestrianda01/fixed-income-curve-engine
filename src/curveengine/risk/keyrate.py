@@ -64,7 +64,7 @@ def hat(keys: Sequence[float], index: int, size: float) -> Scenario:
     return Scenario(name=f"key {centre:g}y", shift=shift)
 
 
-def _piecewise_linear(
+def piecewise_linear(
     keys: Sequence[float], shifts: Mapping[float, float]
 ) -> Callable[[float], float]:
     _validate(keys)

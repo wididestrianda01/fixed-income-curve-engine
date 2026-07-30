@@ -14,10 +14,10 @@ from curveengine.pricing import price
 from curveengine.risk.keyrate import (
     SEK_KEY_RATES,
     USD_KEY_RATES,
-    _piecewise_linear,
     bucket_pnl,
     hat,
     krd,
+    piecewise_linear,
 )
 from curveengine.risk.scenarios import Scenario, shift_curveset
 from curveengine.risk.sensitivities import effective_duration
@@ -124,7 +124,7 @@ def test_bucket_pnl_reconciles_to_a_full_reprice(bond: FixedCouponBond, flat: Cu
         30.0: -0.0015,
     }
 
-    scenario = Scenario(name="twist", shift=_piecewise_linear(USD_KEY_RATES, shifts))
+    scenario = Scenario(name="twist", shift=piecewise_linear(USD_KEY_RATES, shifts))
     base = price(bond, flat, ASOF).dirty
     actual = price(bond, shift_curveset(flat, scenario), ASOF).dirty - base
 
