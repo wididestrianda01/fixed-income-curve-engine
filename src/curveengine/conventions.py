@@ -12,8 +12,10 @@ classic source of small, plausible-looking pricing errors:
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, timedelta
 from enum import StrEnum
+
+from curveengine.calendars import Calendar
 
 
 class DayCount(StrEnum):
@@ -98,3 +100,68 @@ def to_continuous(rate: float, t: float, compounding: Compounding) -> float:
     if t <= 0.0:
         raise ValueError(f"t must be positive to convert a rate, got {t}")
     return -math.log(discount_factor(rate, t, compounding)) / t
+
+
+class BusinessDayConvention(StrEnum):
+    """Rules for moving a date that lands on a non-business day."""
+
+    FOLLOWING = "Following"
+    MODIFIED_FOLLOWING = "Modified Following"
+    PRECEDING = "Preceding"
+    UNADJUSTED = "Unadjusted"
+
+
+def adjust(d: date, calendar: Calendar, bdc: BusinessDayConvention) -> date:
+    """Move ``d`` to a business day under ``bdc``."""
+    if bdc is BusinessDayConvention.UNADJUSTED or calendar.is_business_day(d):
+        return d
+    if bdc is BusinessDayConvention.PRECEDING:
+        return _roll(d, calendar, -1)
+    forward = _roll(d, calendar, +1)
+    if bdc is BusinessDayConvention.MODIFIED_FOLLOWING and forward.month != d.month:
+        return _roll(d, calendar, -1)
+    return forward
+
+
+def _roll(d: date, calendar: Calendar, step: int) -> date:
+    while not calendar.is_business_day(d):
+        d += timedelta(days=step)
+    return d
+
+
+def add_months(d: date, months: int) -> date:
+    """Add ``months`` calendar months, clamping to the end of a shorter month."""
+    total = d.month - 1 + months
+    year = d.year + total // 12
+    month = total % 12 + 1
+    last_day = (date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)).day
+    return date(year, month, min(d.day, last_day))
+
+
+def schedule(
+    start: date,
+    end: date,
+    frequency: int,
+    calendar: Calendar,
+    bdc: BusinessDayConvention,
+) -> tuple[date, ...]:
+    """Period boundaries from ``start`` to ``end``, inclusive of both.
+
+    Dates are generated backwards from ``end`` because that is where coupon dates
+    are anchored in practice: an off-cycle issue produces a short or long *first*
+    period, never an odd final one.
+    """
+    if frequency <= 0 or 12 % frequency != 0:
+        raise ValueError(f"frequency must divide 12 evenly, got {frequency}")
+    if end <= start:
+        raise ValueError(f"end {end} must fall after start {start}")
+
+    step = 12 // frequency
+    unadjusted = [end]
+    while True:
+        previous = add_months(unadjusted[0], -step)
+        if previous <= start:
+            break
+        unadjusted.insert(0, previous)
+    unadjusted.insert(0, start)
+    return tuple(adjust(d, calendar, bdc) for d in unadjusted)
