@@ -60,7 +60,17 @@ class InterpolatedDiscountCurve:
     times: tuple[float, ...]
     dfs: tuple[float, ...]
     method: InterpMethod
-    _cached_spline: CubicSpline = field(init=False, repr=False, compare=False, default=None)
+
+    # Derived once in __post_init__. The curve is immutable, so everything below is
+    # a pure function of the knots — and the bootstrap rebuilds a curve on every
+    # root-finding iteration, which makes recomputing any of it per call expensive.
+    _knots: tuple[float, ...] = field(init=False, repr=False, compare=False, default=())
+    _logs: tuple[float, ...] = field(init=False, repr=False, compare=False, default=())
+    _zero_rates: tuple[float, ...] = field(init=False, repr=False, compare=False, default=())
+    _spline: CubicSpline | None = field(init=False, repr=False, compare=False, default=None)
+    _forwards: tuple[tuple[float, ...], tuple[float, ...]] | None = field(
+        init=False, repr=False, compare=False, default=None
+    )
 
     def __post_init__(self) -> None:
         if len(self.times) != len(self.dfs):
@@ -78,9 +88,19 @@ class InterpolatedDiscountCurve:
             raise CurveConstructionError(f"Knot times must be strictly increasing: {self.times}")
         if any(df <= 0.0 for df in self.dfs):
             raise CurveConstructionError(f"Discount factors must be positive: {self.dfs}")
-        knots = np.array((0.0, *self.times))
-        logs = np.array((0.0, *(math.log(df) for df in self.dfs)))
-        object.__setattr__(self, "_cached_spline", CubicSpline(knots, logs, bc_type="natural"))
+        knots = (0.0, *self.times)
+        logs = (0.0, *(math.log(df) for df in self.dfs))
+        object.__setattr__(self, "_knots", knots)
+        object.__setattr__(self, "_logs", logs)
+        object.__setattr__(
+            self, "_zero_rates", tuple(-lg / t for t, lg in zip(self.times, logs[1:], strict=True))
+        )
+        if self.method is InterpMethod.CUBIC_LOG_DF:
+            object.__setattr__(
+                self, "_spline", CubicSpline(np.array(knots), np.array(logs), bc_type="natural")
+            )
+        elif self.method is InterpMethod.MONOTONE_CONVEX:
+            object.__setattr__(self, "_forwards", _monotone_convex_forwards(knots, logs))
 
     # --- the DiscountCurve contract -------------------------------------------
 
@@ -89,23 +109,21 @@ class InterpolatedDiscountCurve:
             raise ValueError(f"Curve time must be non-negative, got {t}")
         if t == 0.0:
             return 1.0
-        return math.exp(-self.zero(t) * t)
+        return math.exp(self._log_df_at(t))
 
     def zero(self, t: float) -> float:
-        if t <= 0.0:
-            if t == 0.0:
-                return self._zeros()[0]
+        if t < 0.0:
             raise ValueError(f"Curve time must be non-negative, got {t}")
-        if t <= self.times[0]:
-            return self._zeros()[0]
-        if t >= self.times[-1]:
-            return self._zeros()[-1]
-        return -self._log_df(t) / t
+        if t == 0.0:
+            return self._zero_rates[0]
+        return -self._log_df_at(t) / t
 
     def fwd(self, t1: float, t2: float) -> float:
         if t2 <= t1:
             raise ValueError(f"t2 {t2} must exceed t1 {t1}")
-        return -(math.log(self.df(t2)) - math.log(self.df(t1))) / (t2 - t1)
+        if t1 < 0.0:
+            raise ValueError(f"Curve time must be non-negative, got {t1}")
+        return -(self._log_df_at(t2) - self._log_df_at(t1)) / (t2 - t1)
 
     def instantaneous_fwd(self, t: float) -> float:
         """The instantaneous forward at ``t``, by central difference.
@@ -124,8 +142,13 @@ class InterpolatedDiscountCurve:
 
     # --- interpolation internals ----------------------------------------------
 
-    def _zeros(self) -> tuple[float, ...]:
-        return tuple(-math.log(df) / t for t, df in zip(self.times, self.dfs, strict=True))
+    def _log_df_at(self, t: float) -> float:
+        """Log discount factor at any ``t > 0``, flat in the zero rate outside the knots."""
+        if t <= self.times[0]:
+            return -self._zero_rates[0] * t
+        if t >= self.times[-1]:
+            return -self._zero_rates[-1] * t
+        return self._log_df(t)
 
     def _log_df(self, t: float) -> float:
         """Interpolated log discount factor, for ``t`` strictly inside the knots."""
@@ -136,20 +159,15 @@ class InterpolatedDiscountCurve:
         return self._monotone_convex(t)
 
     def _log_linear(self, t: float) -> float:
-        knots = (0.0, *self.times)
-        logs = (0.0, *(math.log(df) for df in self.dfs))
+        knots, logs = self._knots, self._logs
         i = bisect_left(knots, t)
         t0, t1 = knots[i - 1], knots[i]
         w = (t - t0) / (t1 - t0)
         return logs[i - 1] * (1.0 - w) + logs[i] * w
 
     def _cubic(self, t: float) -> float:
-        spline = self._spline()
-        return float(spline(t))
-
-    def _spline(self) -> CubicSpline:
-        assert self._cached_spline is not None, "spline not built in __post_init__"
-        return self._cached_spline
+        assert self._spline is not None, "spline not built in __post_init__"
+        return float(self._spline(t))
 
     def _monotone_convex(self, t: float) -> float:
         """Hagan-West monotone convex, integrated to a log discount factor.
@@ -168,34 +186,39 @@ class InterpolatedDiscountCurve:
         4. Four regions select the functional form for ``g`` so that the
            resulting forward stays monotone between knots.
         """
-        times, fd, f = self._monotone_convex_forwards()
+        assert self._forwards is not None, "forwards not built in __post_init__"
+        fd, f = self._forwards
+        times = self._knots
         i = bisect_left(times, t)
         t0, t1 = times[i - 1], times[i]
         dt = t1 - t0
         x = (t - t0) / dt
 
-        cumulative = sum(fd[j] * (times[j] - times[j - 1]) for j in range(1, i))  # r[i-1] * t[i-1]
+        # The integral of the forward from 0 to t[i-1] is r[i-1]*t[i-1] = -log df[i-1],
+        # already known at the knot; only the part inside the interval needs integrating.
         integral = dt * (fd[i] * x + _region_integral(f[i - 1] - fd[i], f[i] - fd[i], x))
-        return -(cumulative + integral)
+        return self._logs[i - 1] - integral
 
-    def _monotone_convex_forwards(self) -> tuple[list[float], list[float], list[float]]:
-        """Knot times (with 0 prepended), discrete forwards, knot forwards."""
-        times = [0.0, *self.times]
-        rt = [0.0, *(-math.log(df) for df in self.dfs)]  # r[i] * t[i]
-        n = len(times) - 1
 
-        fd = [0.0] * (n + 1)
-        for i in range(1, n + 1):
-            fd[i] = (rt[i] - rt[i - 1]) / (times[i] - times[i - 1])
+def _monotone_convex_forwards(
+    times: tuple[float, ...], logs: tuple[float, ...]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Discrete interval forwards and instantaneous knot forwards, Hagan-West steps 1-2."""
+    rt = [-lg for lg in logs]  # r[i] * t[i]
+    n = len(times) - 1
 
-        f = [0.0] * (n + 1)
-        for i in range(1, n):
-            left = times[i] - times[i - 1]
-            right = times[i + 1] - times[i]
-            f[i] = (right * fd[i] + left * fd[i + 1]) / (left + right)
-        f[0] = fd[1] - 0.5 * (f[1] - fd[1]) if n > 1 else fd[1]
-        f[n] = fd[n] - 0.5 * (f[n - 1] - fd[n]) if n > 1 else fd[1]
-        return times, fd, f
+    fd = [0.0] * (n + 1)
+    for i in range(1, n + 1):
+        fd[i] = (rt[i] - rt[i - 1]) / (times[i] - times[i - 1])
+
+    f = [0.0] * (n + 1)
+    for i in range(1, n):
+        left = times[i] - times[i - 1]
+        right = times[i + 1] - times[i]
+        f[i] = (right * fd[i] + left * fd[i + 1]) / (left + right)
+    f[0] = fd[1] - 0.5 * (f[1] - fd[1]) if n > 1 else fd[1]
+    f[n] = fd[n] - 0.5 * (f[n - 1] - fd[n]) if n > 1 else fd[1]
+    return tuple(fd), tuple(f)
 
 
 def _region_integral(g0: float, g1: float, x: float) -> float:

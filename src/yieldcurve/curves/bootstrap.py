@@ -15,6 +15,7 @@ is the counterpart, and Notebook 03 shows the same data under both.
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -29,7 +30,7 @@ from yieldcurve.curves.interpolation import (
     InterpolatedDiscountCurve,
 )
 from yieldcurve.curves.pricing import par_rate, price
-from yieldcurve.curves.protocol import CurveSet, curve_time
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve, curve_time
 from yieldcurve.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
 
 _DF_BRACKET = (1e-8, 5.0)
@@ -51,11 +52,7 @@ class Quote:
 
 def _maturity(instrument: object) -> date:
     match instrument:
-        case Bill():
-            return instrument.maturity
-        case FixedCouponBond():
-            return instrument.maturity
-        case VanillaSwap() | OIS():
+        case Bill() | FixedCouponBond() | VanillaSwap() | OIS():
             return instrument.maturity
         case _:
             raise CurveConstructionError(
@@ -68,8 +65,18 @@ def bootstrap(
     quotes: Sequence[Quote],
     asof: date,
     method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
+    discount_curve: DiscountCurve | None = None,
 ) -> InterpolatedDiscountCurve:
-    """Build a discount curve that reprices every quote exactly."""
+    """Build a curve that reprices every quote exactly.
+
+    With ``discount_curve`` omitted the result is a discount curve in its own
+    right — the single-curve case, and the right call when bootstrapping OIS.
+    Pass an already-built OIS curve to bootstrap a *forecast* curve instead: the
+    solved curve then projects the floating leg while the quoted swap is
+    discounted off OIS, which is how a dual-curve build is done post-2008.
+    Discounting a swap off its own projection curve is the pre-crisis convention
+    and misprices the basis.
+    """
     if not quotes:
         raise CurveConstructionError("Cannot bootstrap a curve from no quotes")
 
@@ -80,17 +87,14 @@ def bootstrap(
             f"Every instrument must mature after {asof}; the earliest matures on {maturities[0]}"
         )
     if len(set(maturities)) != len(maturities):
-        from collections import Counter
-
-        maturity_counts = Counter(maturities)
-        duplicates = sorted(m for m, count in maturity_counts.items() if count > 1)
+        duplicates = sorted(m for m, count in Counter(maturities).items() if count > 1)
         raise CurveConstructionError(f"Two instruments share the same maturity: {duplicates}")
 
     times: list[float] = []
     dfs: list[float] = []
     for quote in ordered:
         t = curve_time(asof, _maturity(quote.instrument))
-        next_df = _solve_next_df(quote, asof, times, dfs, t, method)
+        next_df = _solve_next_df(quote, asof, times, dfs, t, method, discount_curve)
         times.append(t)
         dfs.append(next_df)
 
@@ -106,6 +110,7 @@ def _solve_next_df(
     dfs: list[float],
     t: float,
     method: InterpMethod,
+    discount_curve: DiscountCurve | None,
 ) -> float:
     """The discount factor at ``t`` that makes ``quote`` price to its quoted level."""
     instrument = quote.instrument
@@ -122,7 +127,11 @@ def _solve_next_df(
             dfs=(*dfs, candidate),
             method=method,
         )
-        curves = CurveSet.single(trial)
+        curves = (
+            CurveSet.single(trial)
+            if discount_curve is None
+            else CurveSet(discount=discount_curve, forecast=defaultdict(lambda: trial))
+        )
         if isinstance(instrument, FixedCouponBond):
             return price(instrument, curves, asof).dirty - 100.0
         if not isinstance(instrument, VanillaSwap | OIS):

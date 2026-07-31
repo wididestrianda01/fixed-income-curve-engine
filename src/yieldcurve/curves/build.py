@@ -16,7 +16,7 @@ from yieldcurve.calendars import NullCalendar, SwedenCalendar, USGovernmentBondC
 from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.curves.bootstrap import Quote, bootstrap
 from yieldcurve.curves.interpolation import InterpMethod, InterpolatedDiscountCurve
-from yieldcurve.curves.protocol import CurveSet
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve
 from yieldcurve.instruments import OIS, Bill, FixedCouponBond, VanillaSwap
 from yieldcurve.market.snapshot import Snapshot
 
@@ -86,7 +86,16 @@ def usd_forecast_curve(
     asof: date,
     *,
     method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
+    discount_curve: DiscountCurve | None = None,
 ) -> InterpolatedDiscountCurve:
+    """Bootstrap the 3M projection curve, discounting the quoted swaps off OIS.
+
+    ``discount_curve`` defaults to the snapshot's own OIS curve. Passing ``None``
+    explicitly is not a way to opt out of OIS discounting; it is how the caller
+    says "build the OIS curve for me too".
+    """
+    if discount_curve is None:
+        discount_curve = usd_ois_curve(snapshot, asof, method=method)
     frame = _forecast_par_rates(snapshot)
     quotes = [
         Quote(
@@ -105,7 +114,7 @@ def usd_forecast_curve(
         )
         for years, rate in zip(frame["tenor_years"], frame["par_rate"], strict=True)
     ]
-    return bootstrap(quotes, asof=asof, method=method)
+    return bootstrap(quotes, asof=asof, method=method, discount_curve=discount_curve)
 
 
 def usd_curveset(
@@ -114,9 +123,12 @@ def usd_curveset(
     *,
     method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
 ) -> CurveSet:
+    ois = usd_ois_curve(snapshot, asof, method=method)
     return CurveSet(
-        discount=usd_ois_curve(snapshot, asof, method=method),
-        forecast={_FORECAST_TENOR: usd_forecast_curve(snapshot, asof, method=method)},
+        discount=ois,
+        forecast={
+            _FORECAST_TENOR: usd_forecast_curve(snapshot, asof, method=method, discount_curve=ois)
+        },
     )
 
 

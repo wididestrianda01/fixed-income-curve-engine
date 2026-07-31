@@ -9,7 +9,8 @@ the others, and mypy checks the conformance structurally.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator, Mapping
+from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from typing import Protocol, runtime_checkable
@@ -83,7 +84,7 @@ class CurveSet:
     @classmethod
     def single(cls, curve: DiscountCurve) -> CurveSet:
         """The pre-2008 single-curve world: forecast and discount coincide."""
-        return cls(discount=curve, forecast=_EveryTenor(curve))
+        return cls(discount=curve, forecast=defaultdict(lambda: curve))
 
     def forecast_for(self, tenor: str) -> DiscountCurve:
         try:
@@ -92,19 +93,3 @@ class CurveSet:
             raise KeyError(
                 f"No forecast curve for tenor {tenor!r}; available: {sorted(self.forecast)}"
             ) from exc
-
-
-class _EveryTenor(Mapping[str, DiscountCurve]):
-    """A mapping that answers every tenor with the same curve."""
-
-    def __init__(self, curve: DiscountCurve) -> None:
-        self._curve = curve
-
-    def __getitem__(self, key: str) -> DiscountCurve:
-        return self._curve
-
-    def __iter__(self) -> Iterator[str]:
-        raise NotImplementedError("A single-curve CurveSet has no enumerable tenor set")
-
-    def __len__(self) -> int:
-        return 1
