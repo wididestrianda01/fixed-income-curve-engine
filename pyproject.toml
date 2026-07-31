@@ -69,7 +69,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=yieldcurve --cov-report=term-missing --cov-fail-under=80 --strict-markers"
+addopts = "--cov=yieldcurve --cov-report=term-missing --cov-fail-under=90 --strict-markers"
 markers = [
     "slow: Monte Carlo convergence and other long-running tests",
 ]
