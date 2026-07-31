@@ -304,15 +304,15 @@ def calibrate(
     )
 
 
-def atm_swaption_grid(
-    snapshot: Snapshot, asof: date, curve: DiscountCurve
+def swaption_grid(
+    rows: Sequence[tuple[date, date, float]], asof: date, curve: DiscountCurve
 ) -> tuple[tuple[Swaption, ...], tuple[float, ...]]:
+    """Build ATM payer swaptions from (expiry, maturity, normal vol in bp) rows."""
     from yieldcurve.calendars import USGovernmentBondCalendar
     from yieldcurve.conventions import BusinessDayConvention, DayCount
     from yieldcurve.curves.pricing import par_rate
     from yieldcurve.instruments import Swaption, VanillaSwap
 
-    data = snapshot.load("cme_swaption_vols")
     calendar = USGovernmentBondCalendar()
     bdc = BusinessDayConvention.MODIFIED_FOLLOWING
 
@@ -321,11 +321,7 @@ def atm_swaption_grid(
     swaptions: list[Swaption] = []
     vols: list[float] = []
 
-    for _, row in data.iterrows():
-        expiry_date = date.fromisoformat(row["expiry"])
-        maturity_date = date.fromisoformat(row["maturity"])
-        vol_bp = float(row["vol"])
-
+    for expiry_date, maturity_date, vol_bp in rows:
         swap = VanillaSwap(
             start=expiry_date,
             maturity=maturity_date,
@@ -357,3 +353,18 @@ def atm_swaption_grid(
         vols.append(vol_bp / 1e4)
 
     return tuple(swaptions), tuple(vols)
+
+
+def atm_swaption_grid(
+    snapshot: Snapshot, asof: date, curve: DiscountCurve
+) -> tuple[tuple[Swaption, ...], tuple[float, ...]]:
+    data = snapshot.load("cme_swaption_vols")
+    rows = [
+        (
+            date.fromisoformat(row["expiry"]),
+            date.fromisoformat(row["maturity"]),
+            float(row["vol"]),
+        )
+        for _, row in data.iterrows()
+    ]
+    return swaption_grid(rows, asof, curve)

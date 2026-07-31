@@ -14,6 +14,7 @@ from yieldcurve.models.hullwhite import (
     HullWhite,
     atm_swaption_grid,
     calibrate,
+    swaption_grid,
 )
 
 ASOF = date(2026, 7, 24)
@@ -339,3 +340,44 @@ def test_atm_swaption_grid_with_empty_data(
     assert len(vols) == 0
     assert isinstance(swaptions, tuple)
     assert isinstance(vols, tuple)
+
+
+def test_swaption_grid_builds_atm_swaptions_from_explicit_rows(
+    flat_discount_curve: FlatCurve,
+) -> None:
+    """Grid construction is reusable without a licensed vendor CSV."""
+    # Arrange
+    rows = ((date(2027, 7, 24), date(2032, 7, 24), 85.0),)
+
+    # Act
+    swaptions, vols = swaption_grid(rows, ASOF, flat_discount_curve)
+
+    # Assert
+    assert len(swaptions) == 1
+    assert vols == pytest.approx((85.0 / 1e4,))
+    assert swaptions[0].strike == pytest.approx(swaptions[0].swap.fixed_rate)
+    assert swaptions[0].expiry == date(2027, 7, 24)
+
+
+def test_swaption_grid_and_the_snapshot_loader_agree(
+    snapshot_with_swaption_data: Snapshot,
+    flat_discount_curve: FlatCurve,
+) -> None:
+    """atm_swaption_grid is the CSV-reading wrapper around swaption_grid."""
+    # Arrange
+    data = snapshot_with_swaption_data.load("cme_swaption_vols")
+    rows = tuple(
+        (date.fromisoformat(r["expiry"]), date.fromisoformat(r["maturity"]), float(r["vol"]))
+        for _, r in data.iterrows()
+    )
+
+    # Act
+    csv_swaptions, csv_vols = atm_swaption_grid(
+        snapshot_with_swaption_data, ASOF, flat_discount_curve
+    )
+    row_swaptions, row_vols = swaption_grid(rows, ASOF, flat_discount_curve)
+
+    # Assert
+    assert csv_vols == pytest.approx(row_vols)
+    assert [s.expiry for s in csv_swaptions] == [s.expiry for s in row_swaptions]
+    assert [s.strike for s in csv_swaptions] == pytest.approx([s.strike for s in row_swaptions])
