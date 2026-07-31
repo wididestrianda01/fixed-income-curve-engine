@@ -12,6 +12,7 @@ import importlib
 import subprocess
 import sys
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -154,3 +155,62 @@ def test_history_is_a_rectangle_with_no_gaps(snapshot: Snapshot) -> None:
     pivot = history.pivot(index="date", columns="tenor_years", values="rate")  # noqa: PD010
 
     assert not pivot.isna().to_numpy().any()
+
+
+def test_carry_forward_reuses_the_latest_mark_on_or_before_the_date(tmp_path: Path) -> None:
+    from yieldcurve.market.refresh import _last_marked
+
+    for day, bp in (("2026-07-01", 1.0), ("2026-07-24", 2.0), ("2026-08-01", 9.0)):
+        directory = tmp_path / day
+        directory.mkdir()
+        pd.DataFrame({"tenor_years": [1.0], "basis_bp": [bp]}).to_csv(
+            directory / "usd_forecast_basis.csv", index=False
+        )
+
+    frame = _last_marked("usd_forecast_basis", date(2026, 7, 30), tmp_path)
+
+    assert frame["basis_bp"].tolist() == [2.0]
+
+
+def test_carry_forward_names_the_file_when_nothing_was_ever_marked(tmp_path: Path) -> None:
+    from yieldcurve.market.refresh import _last_marked
+
+    with pytest.raises(FileNotFoundError, match=r"usd_forecast_basis\.csv"):
+        _last_marked("usd_forecast_basis", date(2026, 7, 30), tmp_path)
+
+
+def _marked(root: Path, day: str) -> None:
+    directory = root / day
+    directory.mkdir()
+    pd.DataFrame({"tenor_years": [1.0], "basis_bp": [2.0]}).to_csv(
+        directory / "usd_forecast_basis.csv", index=False
+    )
+
+
+def test_refresh_runs_offline_when_the_selection_needs_no_network(tmp_path: Path) -> None:
+    """--only must build the one source asked for; no builder may fetch to be listed."""
+    from yieldcurve.market.refresh import main
+
+    _marked(tmp_path, "2026-07-01")
+
+    code = main(["--date", "2026-07-30", "--root", str(tmp_path), "--only", "usd_forecast_basis"])
+
+    assert code == 0
+    assert (tmp_path / "2026-07-30" / "usd_forecast_basis.csv").exists()
+
+
+def test_refresh_reports_a_bad_source_without_losing_the_others(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from yieldcurve.market.refresh import main
+
+    _marked(tmp_path, "2026-07-01")
+
+    code = main(
+        ["--date", "2026-07-30", "--root", str(tmp_path), "--only", "usd_forecast_basis", "nope"]
+    )
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "wrote usd_forecast_basis" in out
+    assert "FAILED nope" in out
