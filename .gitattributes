@@ -1,0 +1,15 @@
+# Notebooks in notebooks/ are committed WITH their executed outputs, on purpose.
+#
+# The repository's git rules otherwise call for nbstripout, and stripping is the
+# right default for notebooks used as working scratch. These six are different:
+# they are the reader-facing deliverable. They are read on GitHub, which executes
+# nothing, so a stripped notebook is a wall of code with no results and the
+# artifact loses its entire point.
+#
+# tests/test_notebook_hygiene.py enforces that the outputs are actually present,
+# and that they are reproducible: no wall-clock reads, no unseeded generators, no
+# network calls. That is what makes committing outputs safe here rather than a
+# source of diff noise.
+#
+# Do not "fix" this by enabling the filter.
+notebooks/*.ipynb -filter -diff
