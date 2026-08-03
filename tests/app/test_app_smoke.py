@@ -53,3 +53,22 @@ def test_curve_tab_ten_year_zero_matches_the_library() -> None:
     ).zero(10.0)
     cached = sek_curve(ASOF, InterpMethod.MONOTONE_CONVEX).zero(10.0)
     assert cached == pytest.approx(direct, abs=1e-10)
+
+
+def test_pricing_tab_shows_the_three_price_components(app: AppTest) -> None:
+    assert {"Clean price", "Accrued", "Dirty price", "Yield to maturity"} <= _labels(app)
+
+
+def test_pricing_tab_clean_plus_accrued_equals_dirty(app: AppTest) -> None:
+    _price_metrics = {"Clean price", "Accrued", "Dirty price"}
+    by_label = {m.label: float(m.value) for m in app.metric if m.label in _price_metrics}
+    assert by_label["Clean price"] + by_label["Accrued"] == pytest.approx(
+        by_label["Dirty price"], abs=1e-9
+    )
+
+
+def test_pricing_tab_bond_universe_stops_at_the_last_curve_pillar() -> None:
+    from app.data import gov_bonds
+
+    maturities = [b.maturity for b in gov_bonds()]
+    assert max(maturities) <= date(2036, 1, 1)
