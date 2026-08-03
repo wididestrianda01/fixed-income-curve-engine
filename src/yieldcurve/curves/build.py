@@ -22,6 +22,18 @@ from yieldcurve.market.snapshot import Snapshot
 
 _FORECAST_TENOR = "3M"
 
+__all__ = [
+    "CurveDataError",
+    "government_swap_basis",
+    "sek_government_curve",
+    "sek_government_quotes",
+    "usd_curveset",
+    "usd_forecast_curve",
+    "usd_government_curve",
+    "usd_ois_curve",
+    "usd_ois_quotes",
+]
+
 
 class CurveDataError(ValueError):
     """The snapshot cannot support the requested curve."""
@@ -132,16 +144,11 @@ def usd_curveset(
     )
 
 
-def sek_government_curve(
-    snapshot: Snapshot,
-    asof: date,
-    *,
-    method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
-) -> InterpolatedDiscountCurve:
+def sek_government_quotes(snapshot: Snapshot, asof: date) -> tuple[Quote, ...]:
+    """Bills and benchmark yields from the Riksbank snapshot datasets."""
     bills = snapshot.load("riksbank_bills")
     benchmarks = snapshot.load("riksbank_gov_benchmarks")
     calendar = SwedenCalendar()
-
     quotes: list[Quote] = [
         Quote(
             instrument=Bill(
@@ -168,7 +175,16 @@ def sek_government_curve(
                 rate=float(quoted),
             )
         )
-    return bootstrap(_sorted(quotes), asof=asof, method=method)
+    return _sorted(quotes)
+
+
+def sek_government_curve(
+    snapshot: Snapshot,
+    asof: date,
+    *,
+    method: InterpMethod = InterpMethod.MONOTONE_CONVEX,
+) -> InterpolatedDiscountCurve:
+    return bootstrap(sek_government_quotes(snapshot, asof), asof=asof, method=method)
 
 
 def usd_government_curve(

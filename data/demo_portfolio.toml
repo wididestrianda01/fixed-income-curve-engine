@@ -1,0 +1,76 @@
+# A stylised Swedish banking book. Every bond is a real Riksgälden benchmark taken from
+# data/snapshots/2026-07-24/riksgalden_gov_bonds.csv — real ISIN, real coupon, real
+# maturity. The notionals are invented: they are chosen so the six BCBS d368 scenarios
+# produce visibly different ΔEVE, which is the point of the exhibit. This is not anyone's
+# actual balance sheet.
+#
+# tier1_capital is likewise illustrative. It exists only to give the 15% IRRBB outlier
+# threshold something to divide by.
+
+tier1_capital = 4_000_000_000.0
+currency = "SEK"
+
+[[position]]
+label = "SGB 1.00% Nov-2026"          # SE0007125927
+kind = "bond"
+issue = 2015-05-22
+maturity = 2026-11-12
+coupon = 0.01
+frequency = 1
+day_count = "30/360"
+notional = 900_000_000.0
+
+[[position]]
+label = "SGB 0.75% May-2028"          # SE0009496367
+kind = "bond"
+issue = 2017-01-27
+maturity = 2028-05-12
+coupon = 0.0075
+frequency = 1
+day_count = "30/360"
+notional = 750_000_000.0
+
+[[position]]
+label = "SGB 0.125% May-2031"         # SE0013935319
+kind = "bond"
+issue = 2020-03-27
+maturity = 2031-05-12
+coupon = 0.00125
+frequency = 1
+day_count = "30/360"
+notional = 600_000_000.0
+
+[[position]]
+label = "SGB 1.75% Nov-2033"          # SE0017830730
+kind = "bond"
+issue = 2022-05-06
+maturity = 2033-11-11
+coupon = 0.0175
+frequency = 1
+day_count = "30/360"
+notional = 500_000_000.0
+
+[[position]]
+label = "SGB 2.25% May-2035"          # SE0021308541
+kind = "bond"
+issue = 2024-02-02
+maturity = 2035-05-11
+coupon = 0.0225
+frequency = 1
+day_count = "30/360"
+notional = 350_000_000.0
+
+# Struck at the curve's own 5y par rate as at 2026-07-24, so it opens at zero PV and
+# every ΔEVE it contributes is pure scenario effect. Recompute if the snapshot changes.
+[[position]]
+label = "5y SEK payer swap"
+kind = "swap"
+start = 2026-07-24
+maturity = 2031-07-24
+fixed_rate = 0.027561
+fixed_frequency = 1
+fixed_day_count = "30/360"
+float_tenor = "3M"
+float_day_count = "ACT/360"
+pay_fixed = true
+notional = -1_500_000_000.0

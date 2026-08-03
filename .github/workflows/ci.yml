@@ -12,8 +12,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,app]"
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy
       - run: pytest
+      - run: pytest --nbmake notebooks/
