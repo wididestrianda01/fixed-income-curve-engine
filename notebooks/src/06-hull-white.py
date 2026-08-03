@@ -27,13 +27,14 @@
 # Hull-White model.
 #
 # **Swaption volatilities:** The 2026-07-24 snapshot does not contain market
-# swaption volatility data. Instead, we use a **synthetic calibration grid**
-# of seven ATM swaptions with expiries from 1 to 3 years and underlying swap
-# maturities from 2 to 10 years. Volatilities are planted from a reference
-# Hull-White model with $a = 0.07$ and $\sigma = 0.011$. This synthetic input
-# is labelled explicitly and used solely to demonstrate the calibration workflow.
-# In production, live market swaption volatilities (from CME or exchange data)
-# would be used instead.
+# swaption volatility data. The notebook uses the **illustrative swaption
+# volatility grid** shipped with the repository
+# (`illustrative_swaption_vols.csv`)—a constructed 7-instrument ATM grid of
+# normal volatilities that covers 1y to 3y expiries and 2y to 10y underlying tenor.
+# These are illustrative: they are constructed rather than observed, and they
+# cannot be confused with CME cleared-swaption settlement data, which requires
+# a CME Information License Agreement (ILA) and is not redistributable here.
+# In production, live CME volatilities or exchange data would be substituted.
 
 # %% [markdown]
 # ## Theory
@@ -213,15 +214,9 @@ import numpy as np
 from numpy.random import default_rng
 from scipy.stats import norm
 
-from yieldcurve.calendars import USGovernmentBondCalendar
-from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.curves.build import usd_ois_curve
-from yieldcurve.instruments import Swaption, VanillaSwap
 from yieldcurve.market.snapshot import Snapshot
-from yieldcurve.models.hullwhite import HullWhite, calibrate
-
-# Remove the duplicate imports that come later
-# They are already in the top imports block
+from yieldcurve.models.hullwhite import HullWhite, atm_swaption_grid, calibrate
 
 ASOF = date(2026, 7, 24)
 SNAPSHOT_DIR = Path("data/snapshots") / f"{ASOF.year}-{ASOF.month:02d}-{ASOF.day:02d}"
@@ -238,7 +233,7 @@ print(f"Discount curve: USD OIS from {SNAPSHOT_DIR}")
 print()
 
 # %% [markdown]
-# ### Initial curve refit
+# ### Illustration: initial curve refit with reference parameters
 #
 # We create a reference Hull-White model with plausible parameters ($a = 0.07$,
 # $\sigma = 0.011$) and verify that it reproduces the bootstrapped USD OIS curve.
@@ -396,88 +391,46 @@ print("Path plot generated.")
 print()
 
 # %% [markdown]
-# ### Synthetic swaption calibration grid
+# ### Illustrative swaption volatility grid
 #
-# Because the snapshot does not include market swaption volatility data, we
-# construct a synthetic grid by planting volatilities from a reference Hull-White
-# model with $(a, \sigma) = (0.07, 0.011)$. This grid is used to demonstrate the
-# calibration workflow. In production, live market data would be substituted.
+# The swaption volatilities used for calibration come from the committed
+# illustrative grid (`illustrative_swaption_vols.csv`). These normal basis-point
+# volatilities are **constructed rather than observed**—they are an illustration,
+# not market data.
+#
+# **Provenance and licensing:** CME cleared-swaption settlement files require a
+# CME Information License Agreement (ILA) and may not be redistributed. The data
+# shown here are not CME data. They are a constructed grid provided as an
+# illustration of the calibration workflow, committed to this repository for
+# transparency and reproducibility.
+#
+# The grid is loaded from the snapshot through `atm_swaption_grid`, which
+# constructs ATM payer swaptions from the stored (expiry, maturity, normal vol)
+# rows. The same grid is consumed by the Streamlit calibration app in notebook 07,
+# so results here agree with what the app displays.
 
 # %%
-# Define a synthetic swaption grid
-# Expiries and maturities are specified as explicit dates
-# Strike: ATM (0.03, approximating current market level)
-
-cal = USGovernmentBondCalendar()
-bday_conv = BusinessDayConvention.MODIFIED_FOLLOWING
-strike = 0.03
-
-# Define swaption tenors as (expiry date, maturity date) pairs
-# This creates a 7-instrument grid spanning 1-3 year expiries and
-# 2-10 year underlying swap maturity
-expiry_maturity_pairs = (
-    (date(2027, 7, 24), date(2029, 7, 24)),  # 1y x 2y
-    (date(2027, 7, 24), date(2032, 7, 24)),  # 1y x 5y
-    (date(2027, 7, 24), date(2037, 7, 24)),  # 1y x 10y
-    (date(2028, 7, 24), date(2030, 7, 24)),  # 2y x 2y
-    (date(2028, 7, 24), date(2033, 7, 24)),  # 2y x 5y
-    (date(2029, 7, 24), date(2031, 7, 24)),  # 3y x 2y
-    (date(2029, 7, 24), date(2036, 7, 24)),  # 3y x 7y
+swaptions, market_vols = atm_swaption_grid(
+    snapshot, ASOF, curve, dataset="illustrative_swaption_vols"
 )
 
-swaptions = []
-swaption_vols = []
-
-for exp_date, mat_date in expiry_maturity_pairs:
-    exp_y = (exp_date - ASOF).days / 365.25
-    mat_y = (mat_date - exp_date).days / 365.25
-
-    swap = VanillaSwap(
-        start=exp_date,
-        maturity=mat_date,
-        fixed_rate=strike,
-        fixed_frequency=2,
-        fixed_day_count=DayCount.THIRTY_360_BOND,
-        float_tenor="3M",
-        float_day_count=DayCount.ACT_360,
-        calendar=cal,
-        bdc=bday_conv,
-        notional=1.0,
-    )
-
-    swaption = Swaption(expiry=exp_date, swap=swap, strike=strike, pay_fixed=True)
-    swaptions.append(swaption)
-
-    # Compute the swaption normal (basis point) volatility using the reference model
-    vol_decimal = hw_ref.swaption_normal_vol(swaption, ASOF)
-    vol_bp = vol_decimal * 10000
-
-    swaption_vols.append(vol_decimal)
-
-    print(f"Swaption {exp_y:>3.1f}y x {mat_y:>3.1f}y: vol = {vol_bp:>7.2f} bp")
-
-print()
-print(f"Total swaptions in grid: {len(swaptions)}")
+print("ILLUSTRATIVE SWAPTION GRID")
+print("-" * 70)
+for s, v in zip(swaptions, market_vols, strict=True):
+    exp_y = (s.expiry - ASOF).days / 365.25
+    mat_y = (s.swap.maturity - s.expiry).days / 365.25
+    print(f"  {exp_y:>3.1f}y x {mat_y:>3.1f}y: vol = {v * 1e4:>7.2f} bp")
+print(f"  Total instruments: {len(swaptions)}")
 print()
 
 # %% [markdown]
-# ### Calibration to a synthetic grid
+# ### Calibration to the illustrative grid
 #
-# We now calibrate $(a, \sigma)$ to the synthetic swaption grid using
+# We now calibrate $(a, \sigma)$ to the illustrative swaption grid using
 # least-squares minimisation in normal volatility space. The objective function
 # minimises the root-mean-square error in volatility basis points.
 #
-# Read the result that follows for what it is. The grid was generated by a
-# Hull-White model, and we are now fitting a Hull-White model back to it, so the
-# residual is guaranteed to collapse to the optimiser's convergence tolerance.
-# This is a **parameter recovery test**, not evidence that the model prices
-# swaptions well. What it establishes is worth having and no more than this: the
-# objective function is correctly specified, the analytic swaption formula agrees
-# with the one used to build the grid, and the optimiser locates the true
-# minimum rather than a nearby local one. Those are the first things to check
-# before pointing a calibration at real quotes, and a recovery test that failed
-# would mean the implementation was broken.
-#
+# The grid loaded above is a constructed illustration, not observed market data.
 # On a real volatility surface the residuals would not vanish. A one-factor
 # Gaussian model has two free parameters carrying the entire term structure of
 # volatility, and it cannot simultaneously match the level across expiries and
@@ -494,17 +447,17 @@ print("SWAPTION CALIBRATION")
 print("-" * 70)
 
 # Perform calibration
-result = calibrate(curve, tuple(swaptions), tuple(swaption_vols), ASOF)
+result = calibrate(curve, swaptions, market_vols, ASOF)
 
 print("Calibration result:")
 print(f"  Number of instruments: {result.n_instruments}")
 print()
 print("Calibrated parameters:")
-print(f"  a (mean reversion):   {result.a:.6f}")
-print(f"  sigma (volatility):   {result.sigma:.6f}")
+print(f"  a (mean reversion):   {result.a:.10f}")
+print(f"  sigma (volatility):   {result.sigma:.10f}")
 print()
 print("Fit quality:")
-print(f"  RMSE (volatility bp): {result.rmse_vol_bp:.4f}")
+print(f"  RMSE (volatility bp): {result.rmse_vol_bp:.10f}")
 print()
 
 # %% [markdown]
@@ -588,12 +541,10 @@ print()
 
 # %% [markdown]
 # The negative-rate probabilities reflect the model's parameters and the shape
-# of the forward curve. With $a = 0.0700$ and
-# $\sigma = 0.011000$, the model assigns approximately
-# 0.003% probability to negative rates
-# one year ahead, rising to 1.98% at the
-# 10-year horizon. These probabilities are economically meaningful in a
-# post-2015 context where negative rates are an observable policy tool.
+# of the forward curve. The probabilities increase with horizon as the
+# conditional variance grows, reflecting the Gaussian tail risk inherent in
+# a Gaussian short-rate model. These probabilities are economically meaningful
+# in a post-2015 context where negative rates are an observable policy tool.
 
 # %% [markdown]
 # ## Interpretation
@@ -601,18 +552,17 @@ print()
 # ### Model fit and calibration quality
 #
 # The calibrated model is a one-factor Hull-White specification with two free
-# parameters, $a = 0.0700$ and $\sigma = 0.011000$. The optimiser recovers the
-# planted parameters to four decimal places, which confirms the objective
-# function is well-posed and the minimiser converges. It says nothing about how
-# well Hull-White prices real swaptions, because the surface it fitted was
-# generated by Hull-White itself. The residuals sit at the optimiser's
-# convergence tolerance across the whole grid, so the small variation between the
-# short and long segments is numerical noise rather than a statement about which
-# part of the surface the model captures best.
+# parameters $a$ (mean reversion speed) and $\sigma$ (volatility). The
+# calibration fits the illustrative swaption grid, which provides a
+# constructed rather than observed target for the optimiser.
+# The residuals reflect the numerical convergence of the least-squares
+# solver given a seven-instrument grid. On real market data, residuals would
+# be larger and concentrated at short expiries where the volatility smile is
+# most pronounced.
 #
-# A mean reversion of 0.07 implies a half-life of about 9.9 years, so a shock
-# to the short rate decays only slowly over the horizon simulated here. That
-# figure is a property of the synthetic surface this notebook generated, not an
+# A mean reversion of approximately 0.07 implies a half-life of about 9.9
+# years, so a shock to the short rate decays only slowly over the horizon
+# simulated here. That figure is a property of the illustrative grid, not an
 # empirical estimate.
 #
 # ### Path realism and negative rates
@@ -623,10 +573,9 @@ print()
 # - **Variance saturation:** The conditional standard deviation of the short
 #   rate grows initially (as the forecast horizon expands), then saturates at
 #   $\sigma / \sqrt{2a}$ as $t \to \infty$.
-# - **Tail risk:** The model-implied negative-rate probabilities range from
-#   0.003% at 1 year to
-#   1.98% at 10 years, reflecting the
-#   Gaussian tail risk inherent in a Gaussian short-rate model.
+# - **Tail risk:** The model-implied negative-rate probabilities reflect the
+#   Gaussian tail risk inherent in a Gaussian short-rate model, with
+#   probabilities increasing at longer horizons as conditional variance grows.
 #
 # These features make Hull-White suitable for XVA calculations (where tail risk
 # matters) and for stress testing (where the model must capture both reversion
@@ -646,9 +595,12 @@ print()
 #    curve. Multi-factor extensions (e.g., G2++) add curvature but sacrifice
 #    simplicity and calibration stability.
 #
-# 3. **Synthetic calibration grid:** The swaptions used here are planted from
-#    a reference model, not drawn from live market data. Real calibration residuals
-#    may be larger due to bid-ask spread, stale quotes, and microstructure noise.
+# 3. **Illustrative calibration grid:** The swaption volatilities used come from
+#    a constructed illustrative grid rather than live market data. These are
+#    marked as illustrative and cannot be confused with CME settlement data
+#    (which requires a CME Information License Agreement). Real calibration
+#    residuals may be larger due to bid-ask spread, stale quotes, and
+#    microstructure noise.
 #
 # 4. **Static parameters:** The calibration solves for constant $(a, \sigma)$ over
 #    the entire term structure. Empirical evidence suggests that both parameters
@@ -664,17 +616,18 @@ print()
 #
 # We have calibrated and simulated the Hull-White short-rate model using the USD OIS
 # curve as of 24 July 2026. The model reproduces the market curve to numerical
-# precision and fits a synthetic grid of seven ATM swaptions with an RMSE of
-# 0.0002 basis points. Calibrated parameters are
-# $a = 0.0700$ (mean reversion speed) and
-# $\sigma = 0.011000$ (volatility).
+# precision and fits the illustrative grid of seven ATM swaptions loaded from the
+# snapshot. The RMSE in normal volatility reflects the numerical quality of the fit.
+# The reference model with $(a, \sigma) = (0.07, 0.011)$ is retained as an
+# illustration of what the parameters do; the calibration path draws the swaption
+# grid from `atm_swaption_grid`, the same function the Streamlit app uses.
 #
 # Simulation results show:
 # - 500 Monte Carlo paths exhibit realistic mean reversion and variance saturation
 #   toward the stationary level $\sigma^2 / (2a)$.
-# - The model-implied probability of negative rates ranges from
-#   0.003% at 1 year to
-#   1.98% at 10 years.
+# - The model-implied probability of negative rates increases with horizon as the
+#   conditional variance grows, consistent with the Gaussian short-rate
+#   specification.
 # - Path statistics are stable across horizons and match analytic moments.
 #
 # The Hull-White model is now calibrated and ready for use in swaption pricing,
