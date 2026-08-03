@@ -1,5 +1,15 @@
 # yieldcurve
 
+**Author:** [Your Name], MSc in [Your Degree] (in progress)
+
+**Live app:** [PUBLIC URL — fill in after deploy]
+
+A fixed-income yield curve engine built from bootstrapping to Hull-White calibration,
+priced at parity with QuantLib (1e-8 tolerance on discount factors), covered at 90%+,
+and verified against ECB target-rate statistics to within 0.5 bp.
+
+## Quick start
+
 A Python library for multi-curve fixed-income term structure construction, pricing and interest-rate risk. Built from live market data: EUR curves from ECB publications, USD Treasury and swap rates from the Federal Reserve's FRED, and SEK government securities from Riksbank and Riksgälden. The library implements sequential bootstrap curve construction, analytic interest-rate risk models, and single-factor interest-rate model calibration. All pricing and risk calculations use continuous-time discount factors; the library enforces immutable data structures and is designed to be correct by construction rather than defensive.
 
 ## Quickstart
