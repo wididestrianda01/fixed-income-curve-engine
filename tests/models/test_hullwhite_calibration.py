@@ -9,7 +9,7 @@ import pytest
 
 from yieldcurve.curves.build import usd_ois_curve
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
-from yieldcurve.market.snapshot import Snapshot
+from yieldcurve.market.snapshot import MissingDatasetError, Snapshot
 from yieldcurve.models.hullwhite import (
     HullWhite,
     atm_swaption_grid,
@@ -357,6 +357,23 @@ def test_swaption_grid_builds_atm_swaptions_from_explicit_rows(
     assert vols == pytest.approx((85.0 / 1e4,))
     assert swaptions[0].strike == pytest.approx(swaptions[0].swap.fixed_rate)
     assert swaptions[0].expiry == date(2027, 7, 24)
+
+
+def test_atm_swaption_grid_reads_an_alternative_dataset(snapshot: Snapshot) -> None:
+    curve = usd_ois_curve(snapshot, ASOF)
+
+    swaptions, vols = atm_swaption_grid(snapshot, ASOF, curve, dataset="illustrative_swaption_vols")
+
+    assert len(swaptions) == len(vols)
+    assert len(swaptions) > 0
+    assert all(v > 0.0 for v in vols)
+
+
+def test_atm_swaption_grid_still_defaults_to_the_cme_dataset(snapshot: Snapshot) -> None:
+    curve = usd_ois_curve(snapshot, ASOF)
+
+    with pytest.raises(MissingDatasetError, match="cme_swaption_vols"):
+        atm_swaption_grid(snapshot, ASOF, curve)
 
 
 def test_swaption_grid_and_the_snapshot_loader_agree(

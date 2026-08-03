@@ -311,6 +311,29 @@ Subscriber Group." Redistribution in this repository is **barred**.
 
 ---
 
+## Illustrative ATM Swaption Normal Volatilities (USD)
+
+- **Status:** Constructed, not observed. These volatilities are **illustrative** — they are
+  not market data and they are not a fit to any traded price.
+- **Reason:** CME cleared-swaption settlement files require a CME Information License
+  Agreement and may not be redistributed in this repository. `src/yieldcurve/market/cme.py`
+  documents the barrier. The illustrative grid fills the gap so that Hull-White calibration
+  and the Streamlit app remain runnable without a CME DataMine licence.
+- **Closed form:**
+  ```
+  sigma_bp(e, m) = (base + hump * e * exp(1 - e / peak)) * exp(-decay * m)
+  ```
+  with constants `base = 60.0 bp`, `hump = 22.0 bp`, `peak = 1.5 y`, `decay = 0.018 y⁻¹`,
+  run over expiries `(0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0)` years and swap tenors
+  `(1.0, 2.0, 5.0, 10.0)` years. The shape is market-plausible: declining in expiry beyond
+  a hump at 1–2 years, with mild decay across swap tenor.
+- **Regeneration:** `python scripts/build_illustrative_vols.py`
+- **CSV:** `illustrative_swaption_vols.csv` — columns: `expiry` (ISO date), `maturity` (ISO
+  date), `vol` (normal vol in basis points). Comment preamble (`#` lines) documents the
+  construction.
+
+---
+
 ## Known Gaps
 
 **SEK market is incomplete in free, redistributable sources.** The Riksbank publishes

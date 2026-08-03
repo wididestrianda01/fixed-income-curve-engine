@@ -44,3 +44,16 @@ def test_latest_picks_the_most_recent_dated_directory(tmp_path: Path) -> None:
 def test_latest_on_an_empty_root_raises(tmp_path: Path) -> None:
     with pytest.raises(MissingDatasetError, match="no snapshots"):
         Snapshot.latest(root=tmp_path)
+
+
+def test_load_skips_comment_preamble(tmp_path: Path) -> None:
+    root = tmp_path / "2026-07-24"
+    root.mkdir()
+    (root / "commented.csv").write_text(
+        "# provenance line one\n# provenance line two\na,b\n1,2\n", encoding="utf-8"
+    )
+
+    frame = Snapshot(date=date(2026, 7, 24), root=tmp_path).load("commented")
+
+    assert list(frame.columns) == ["a", "b"]
+    assert frame.shape == (1, 2)

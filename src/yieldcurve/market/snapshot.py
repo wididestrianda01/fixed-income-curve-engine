@@ -45,7 +45,7 @@ class Snapshot:
                 f"Available in this snapshot: {self.available()}. "
                 "Rebuild a snapshot with: python -m yieldcurve.market.refresh"
             )
-        return pd.read_csv(target)
+        return pd.read_csv(target, comment="#")
 
     def save(self, name: str, frame: pd.DataFrame) -> Path:
         self.directory.mkdir(parents=True, exist_ok=True)

@@ -356,9 +356,19 @@ def swaption_grid(
 
 
 def atm_swaption_grid(
-    snapshot: Snapshot, asof: date, curve: DiscountCurve
+    snapshot: Snapshot,
+    asof: date,
+    curve: DiscountCurve,
+    *,
+    dataset: str = "cme_swaption_vols",
 ) -> tuple[tuple[Swaption, ...], tuple[float, ...]]:
-    data = snapshot.load("cme_swaption_vols")
+    """ATM payer swaptions and their normal vols from a snapshot dataset.
+
+    The default is the licensed CME cleared-swaption settlement grid, which this
+    repository does not ship. Pass dataset="illustrative_swaption_vols" for the
+    constructed grid that is committed here.
+    """
+    data = snapshot.load(dataset)
     rows = [
         (
             date.fromisoformat(row["expiry"]),
