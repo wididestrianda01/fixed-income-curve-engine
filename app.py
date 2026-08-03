@@ -8,9 +8,13 @@ not shown a stack.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from app.data import SNAPSHOT_DATE, load_snapshot
 from app.state import AppState
