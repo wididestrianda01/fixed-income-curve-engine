@@ -60,18 +60,18 @@ def sek_quotes(asof: date) -> tuple[Quote, ...]:
     return sek_government_quotes(load_snapshot(), asof)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def sek_curve(asof: date, method: InterpMethod) -> InterpolatedDiscountCurve:
     return sek_government_curve(load_snapshot(), asof, method=method)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def sek_curveset(asof: date, method: InterpMethod) -> CurveSet:
     """Single-curve mode: SEK government discounting, no separate forecast curve."""
     return CurveSet.single(sek_curve(asof, method))
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def usd_curves(asof: date, method: InterpMethod) -> CurveSet:
     """OIS discounting with a 3M forecast curve — the post-2008 arrangement."""
     return usd_curveset(load_snapshot(), asof, method=method)
