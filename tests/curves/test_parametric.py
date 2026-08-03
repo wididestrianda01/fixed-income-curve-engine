@@ -161,3 +161,27 @@ def test_a_negative_curve_time_is_rejected_by_both_families() -> None:
     for call in (nss.zero, nss.df, ns.zero, ns.df):
         with pytest.raises(ValueError, match="non-negative"):
             call(-1.0)
+
+
+def test_svensson_rmse_is_zero_against_its_own_output() -> None:
+    """The objective evaluated at the truth must be zero, or the fit optimises noise."""
+    times = tuple(np.linspace(0.25, 30.0, 60))
+    truth = Svensson(
+        beta=(0.03, -0.01, 0.02, -0.005),
+        tau=(1.5, 8.0),
+        reference_date=REFERENCE,
+    )
+    zeros = tuple(truth.zero(float(t)) for t in times)
+    assert truth.rmse(times, zeros) == pytest.approx(0.0, abs=1e-15)
+
+
+def test_svensson_fit_recovers_parameters_it_generated() -> None:
+    times = tuple(np.linspace(0.25, 30.0, 60))
+    truth = Svensson(
+        beta=(0.03, -0.01, 0.02, -0.005),
+        tau=(1.5, 8.0),
+        reference_date=REFERENCE,
+    )
+    zeros = tuple(truth.zero(float(t)) for t in times)
+    fitted = Svensson.fit(times, zeros, reference_date=REFERENCE)
+    assert fitted.rmse(times, zeros) < 1e-6

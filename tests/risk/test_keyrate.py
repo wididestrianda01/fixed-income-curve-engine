@@ -144,3 +144,41 @@ def test_the_usd_grid_matches_the_specification() -> None:
 def test_unsorted_keys_are_rejected(bond: FixedCouponBond, flat: CurveSet) -> None:
     with pytest.raises(ValueError, match="ascending"):
         krd(bond, flat, ASOF, (5.0, 1.0, 10.0))
+
+
+def test_hats_partition_unity_across_the_key_rate_grid() -> None:
+    """Ho (1992) hats sum to the parallel shift at every maturity, including outside."""
+    keys = SEK_KEY_RATES
+    for t in (0.0, 0.1, 0.25, 0.9, 1.0, 3.5, 7.0, 10.0, 25.0):
+        total = sum(hat(keys, i, 1.0).shift(t) for i in range(len(keys)))
+        assert total == pytest.approx(1.0, abs=1e-12)
+
+
+def test_a_hat_is_one_at_its_own_key_and_zero_at_its_neighbours() -> None:
+    keys = SEK_KEY_RATES
+    index = keys.index(2.0)
+    shift = hat(keys, index, 1.0).shift
+    assert shift(2.0) == pytest.approx(1.0)
+    assert shift(1.0) == pytest.approx(0.0)
+    assert shift(5.0) == pytest.approx(0.0)
+
+
+def test_the_end_hats_extrapolate_flat() -> None:
+    keys = SEK_KEY_RATES
+    assert hat(keys, 0, 1.0).shift(0.0) == pytest.approx(1.0)
+    assert hat(keys, len(keys) - 1, 1.0).shift(40.0) == pytest.approx(1.0)
+
+
+def test_hat_rejects_an_index_outside_the_grid() -> None:
+    with pytest.raises(IndexError):
+        hat(SEK_KEY_RATES, len(SEK_KEY_RATES), 1.0)
+
+
+def test_key_rate_durations_sum_to_the_effective_duration(
+    bond: FixedCouponBond,
+    flat: CurveSet,
+) -> None:
+    """A consequence of partition of unity: the ladder must reconstruct a parallel move."""
+    ladder = krd(bond, flat, ASOF, SEK_KEY_RATES)
+    parallel_duration = effective_duration(bond, flat, ASOF)
+    assert sum(ladder.values()) == pytest.approx(parallel_duration, rel=2e-2)

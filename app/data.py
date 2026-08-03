@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import streamlit as st
 
@@ -26,13 +28,16 @@ from yieldcurve.curves.interpolation import InterpMethod, InterpolatedDiscountCu
 from yieldcurve.curves.protocol import CurveSet
 from yieldcurve.instruments import FixedCouponBond
 from yieldcurve.market.snapshot import Snapshot
+from yieldcurve.risk.pca import daily_changes
 from yieldcurve.risk.portfolio import Portfolio
 
 __all__ = [
     "SNAPSHOT_DATE",
+    "VAR_WINDOW",
     "cmt_history",
     "gov_bonds",
     "load_snapshot",
+    "pnl_sample",
     "portfolio",
     "sek_curve",
     "sek_curveset",
@@ -91,6 +96,23 @@ def cmt_history() -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def portfolio() -> Portfolio:
     return Portfolio.from_toml(_PORTFOLIO_PATH)
+
+
+VAR_WINDOW = 1000
+"""Roughly four years of daily observations. Sized so the 99% confidence tail contains at
+least the ten observations that yieldcurve.risk.portfolio requires for a stable expected
+shortfall estimate."""
+
+
+@st.cache_data(show_spinner=False)
+def pnl_sample() -> tuple[npt.NDArray[np.float64], tuple[float, ...]]:
+    """The most recent VAR_WINDOW daily rate changes, with their tenor grid.
+
+    Windowing happens here rather than in yieldcurve.risk.portfolio so that the library
+    function stays free of presentation choices.
+    """
+    changes, tenors = daily_changes(cmt_history())
+    return changes[-VAR_WINDOW:], tenors
 
 
 @st.cache_data(show_spinner=False)

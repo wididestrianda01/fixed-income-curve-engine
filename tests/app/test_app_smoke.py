@@ -72,3 +72,59 @@ def test_pricing_tab_bond_universe_stops_at_the_last_curve_pillar() -> None:
 
     maturities = [b.maturity for b in gov_bonds()]
     assert max(maturities) <= date(2036, 1, 1)
+
+
+def test_risk_tab_shows_both_duration_families(app: AppTest) -> None:
+    assert {"DV01", "Modified duration", "Effective duration"} <= _labels(app)
+
+
+def test_risk_tab_discloses_the_interpolated_sek_one_year_point(app: AppTest) -> None:
+    body = " ".join(c.value for c in app.caption)
+    assert "interpolated, not observed" in body
+
+
+def test_irrbb_board_runs_all_six_bcbs_scenarios() -> None:
+    from app.data import portfolio, sek_curveset
+    from yieldcurve.curves.interpolation import InterpMethod
+    from yieldcurve.risk.portfolio import eve_ladder
+    from yieldcurve.risk.scenarios import bcbs_scenarios
+
+    scenarios = bcbs_scenarios("SEK")
+    ladder = eve_ladder(
+        portfolio(),
+        sek_curveset(ASOF, InterpMethod.MONOTONE_CONVEX),
+        ASOF,
+        scenarios,
+    )
+    assert len(ladder) == 6
+    assert tuple(ladder) == tuple(s.name for s in scenarios)
+
+
+def test_risk_tab_reports_var_and_expected_shortfall(app: AppTest) -> None:
+    labels = _labels(app)
+    assert any(label.startswith("VaR") for label in labels)
+    assert any(label.startswith("Expected shortfall") for label in labels)
+
+
+def test_expected_shortfall_never_falls_below_var_at_either_confidence() -> None:
+    from app.data import pnl_sample, portfolio, sek_curveset
+    from yieldcurve.curves.interpolation import InterpMethod
+    from yieldcurve.risk.portfolio import historical_pnl, var_es
+
+    changes, tenors = pnl_sample()
+    pnl = historical_pnl(
+        portfolio(),
+        sek_curveset(ASOF, InterpMethod.MONOTONE_CONVEX),
+        ASOF,
+        changes,
+        tenors,
+    )
+    for confidence in (0.95, 0.99):
+        var, es = var_es(pnl, confidence=confidence)
+        assert es >= var
+
+
+def test_the_volatility_proxy_disclosure_is_on_screen(app: AppTest) -> None:
+    """If this fails, someone deleted the sentence that makes the VaR number honest."""
+    rendered = " ".join(m.value for m in app.markdown) + " ".join(c.value for c in app.caption)
+    assert "proxy" in rendered
