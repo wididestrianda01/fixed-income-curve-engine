@@ -58,10 +58,10 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 warn_unused_ignores = false
-files = ["src", "tests", "app"]
+files = ["src", "tests", "app.py"]
 
 [[tool.mypy.overrides]]
-module = ["QuantLib.*", "scipy.*", "plotly.*"]
+module = ["QuantLib.*", "scipy.*", "streamlit.*", "plotly.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
