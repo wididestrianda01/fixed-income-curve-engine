@@ -36,6 +36,7 @@ notebooks = [
 app = [
     "streamlit>=1.38",
     "matplotlib>=3.9",
+    "plotly>=5.24",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -57,10 +58,10 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 warn_unused_ignores = false
-files = ["src", "tests"]
+files = ["src", "tests", "app"]
 
 [[tool.mypy.overrides]]
-module = ["QuantLib.*", "scipy.*"]
+module = ["QuantLib.*", "scipy.*", "plotly.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
