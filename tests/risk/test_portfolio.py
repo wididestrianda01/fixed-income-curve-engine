@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import math
 from dataclasses import replace
 from datetime import date
@@ -10,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import yieldcurve.risk.portfolio as portfolio_module
 from yieldcurve.calendars import NullCalendar
 from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.curves.pricing import par_rate
@@ -27,7 +29,7 @@ from yieldcurve.risk.portfolio import (
     present_value,
     var_es,
 )
-from yieldcurve.risk.scenarios import bcbs_scenarios, parallel, shift_curveset
+from yieldcurve.risk.scenarios import eu_scenarios, parallel, shift_curveset
 
 ASOF = date(2026, 7, 24)
 DEMO_TOML = Path(__file__).resolve().parents[2] / "data" / "demo_portfolio.toml"
@@ -196,7 +198,7 @@ def test_delta_eve_of_a_zero_shock_is_zero(two_bonds: Portfolio, flat_curves: Cu
 def test_eve_ladder_key_order_matches_the_scenario_sequence(
     two_bonds: Portfolio, flat_curves: CurveSet
 ) -> None:
-    scenarios = bcbs_scenarios("SEK")
+    scenarios = eu_scenarios("SEK")
     ladder = eve_ladder(two_bonds, flat_curves, ASOF, scenarios)
     assert tuple(ladder) == tuple(s.name for s in scenarios)
     assert len(ladder) == 6
@@ -332,13 +334,17 @@ def test_from_toml_rejects_an_invalid_float_tenor(tmp_path: Path) -> None:
         Portfolio.from_toml(bad)
 
 
-def test_from_toml_rejects_a_non_boolean_pay_fixed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("value", ['"yes"', '"false"', "1", "0"])
+def test_from_toml_rejects_a_non_boolean_pay_fixed(tmp_path: Path, value: str) -> None:
+    """pay_fixed = "false" (or any non-boolean) is rejected, never coerced —
+    the brief's canonical strict-loader case (behavioral test 1)."""
     bad = tmp_path / "bad.toml"
     bad.write_text(
         'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "swap"\n'
         "start = 2026-07-24\nmaturity = 2031-07-24\nfixed_rate = 0.03\n"
         "fixed_frequency = 1\nfixed_day_count = '30/360'\n"
-        'float_tenor = "3M"\nfloat_day_count = "ACT/360"\npay_fixed = "yes"\n'
+        'float_tenor = "3M"\nfloat_day_count = "ACT/360"\n'
+        f"pay_fixed = {value}\n"
         "notional = 1.0\n",
         encoding="utf-8",
     )
@@ -593,3 +599,127 @@ def test_from_toml_rejects_an_unknown_day_count(tmp_path: Path) -> None:
     )
     with pytest.raises(PortfolioError, match="nonsense"):
         Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_an_unknown_top_level_key(tmp_path: Path) -> None:
+    """SEC-01/QUANTRISK-12: unknown document keys cannot inject behavior; only
+    the documented allowlist (currency, position, tier1_capital) is accepted."""
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n'
+        "[magic]\n"
+        "leverage = 99\n"
+        "[[position]]\n"
+        'label = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="unknown"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_an_unknown_position_key(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n'
+        "[[position]]\n"
+        'label = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n'
+        'rating = "AAA"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="rating"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_key_that_is_not_valid_for_the_kind(tmp_path: Path) -> None:
+    """A bond entry carrying a swap-only field is malformed input, not an
+    ignored field."""
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n'
+        "[[position]]\n"
+        'label = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n'
+        "pay_fixed = true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="pay_fixed"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_accepts_the_allowlisted_tier1_capital(tmp_path: Path) -> None:
+    """tier1_capital is the disclosed invented capital denominator of the demo
+    exhibit (spec section 4); it is allowlisted and validated as a positive
+    finite number."""
+    good = tmp_path / "good.toml"
+    good.write_text(
+        'currency = "SEK"\n'
+        "tier1_capital = 4_000_000_000.0\n"
+        "[[position]]\n"
+        'label = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    book = Portfolio.from_toml(good)
+    assert len(book.positions) == 1
+
+
+@pytest.mark.parametrize("value", ["-1.0", "0.0", '"four billion"', "inf"])
+def test_from_toml_rejects_an_invalid_tier1_capital(tmp_path: Path, value: str) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n'
+        f"tier1_capital = {value}\n"
+        "[[position]]\n"
+        'label = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="tier1_capital"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_wraps_malformed_toml_in_the_named_error(tmp_path: Path) -> None:
+    """A file with duplicate keys (the loader-level 'duplicate tenors' class of
+    defect) is malformed TOML and surfaces as PortfolioError with file context,
+    not as a raw parser exception."""
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n'
+        "[[position]]\n"
+        'label = "x"\nlabel = "y"\n'
+        'kind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="invalid TOML"):
+        Portfolio.from_toml(bad)
+
+
+def test_result_labels_are_illustrative_delta_eve_not_regulatory_capital() -> None:
+    """Controller decision (behavioral test 5): portfolio result labels say
+    illustrative Delta EVE; the disclosed capital proxy is never called
+    regulatory capital. The public docstrings are the labels' contract."""
+    module_doc = inspect.getdoc(portfolio_module)
+    assert module_doc is not None
+    lowered = module_doc.lower()
+    assert "illustrative delta eve" in lowered
+    assert "regulatory capital" not in lowered
+
+    for name in ("delta_eve", "eve_ladder"):
+        doc = inspect.getdoc(getattr(portfolio_module, name))
+        assert doc is not None
+        assert "illustrative" in doc.lower(), name
+        assert "delta eve" in doc.lower(), name
+        assert "regulatory capital" not in doc.lower(), name
+
+    loader_doc = inspect.getdoc(Portfolio.from_toml)
+    assert loader_doc is not None
+    assert "not regulatory capital" in loader_doc.lower()

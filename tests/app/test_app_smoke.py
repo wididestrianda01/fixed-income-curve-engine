@@ -87,9 +87,9 @@ def test_irrbb_board_runs_all_six_bcbs_scenarios() -> None:
     from app.data import portfolio, sek_curveset
     from yieldcurve.curves.interpolation import InterpMethod
     from yieldcurve.risk.portfolio import eve_ladder
-    from yieldcurve.risk.scenarios import bcbs_scenarios
+    from yieldcurve.risk.scenarios import eu_scenarios
 
-    scenarios = bcbs_scenarios("SEK")
+    scenarios = eu_scenarios("SEK")
     ladder = eve_ladder(
         portfolio(),
         sek_curveset(ASOF, InterpMethod.MONOTONE_CONVEX),

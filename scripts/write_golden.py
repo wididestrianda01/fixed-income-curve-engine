@@ -32,7 +32,7 @@ from yieldcurve.market.snapshot import Snapshot
 from yieldcurve.models.hullwhite import atm_swaption_grid, calibrate
 from yieldcurve.risk.pca import daily_changes, fit_pca
 from yieldcurve.risk.portfolio import Portfolio, delta_eve, present_value
-from yieldcurve.risk.scenarios import bcbs_scenarios
+from yieldcurve.risk.scenarios import eu_scenarios
 from yieldcurve.risk.sensitivities import dv01, effective_duration
 
 ASOF = date(2026, 7, 24)
@@ -77,7 +77,7 @@ def compute() -> dict[str, float]:
     book = Portfolio.from_toml(portfolio_path)
     result["portfolio.pv"] = present_value(book, curves, ASOF)
 
-    for scenario in bcbs_scenarios("SEK"):
+    for scenario in eu_scenarios("SEK"):
         key = f"portfolio.eve.{scenario.name}"
         result[key] = delta_eve(book, curves, ASOF, scenario)
 

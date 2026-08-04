@@ -1,0 +1,44 @@
+# EU 2024/856 supervisory shock scenarios for educational analysis.
+#
+# Source: Commission Delegated Regulation (EU) 2024/856 of 1 December 2023
+# supplementing Directive 2013/36/EU with regard to regulatory technical
+# standards specifying the supervisory shock scenarios, the common modelling
+# and parametric assumptions and what constitutes a large decline
+# (OJ L, 2024/856, 24.4.2024; ELI http://data.europa.eu/eli/reg_del/2024/856/oj;
+# EUR-Lex CELEX 32024R0856).
+#
+# - Article 1(1): the six supervisory shock scenarios.
+# - Article 2: parameterisations (e^(-t/4) short decay; rotation weights).
+# - Article 3(7): the post-shock maturity-dependent rate floor.
+# - Annex Part A: currency-specific shock rows (USD and SEK are listed
+#   separately; each row cites its own values).
+#
+# Do not edit a number without updating its citation, and do not add a currency
+# without reading its row in Annex Part A of the regulation.
+
+[shape]
+# The short-rate scalar decays as exp(-t / short_decay_years) in Article 2(2)-(3).
+short_decay_years = 4.0
+citation = "Commission Delegated Regulation (EU) 2024/856, Article 2(2)-(3) (e^(-t/4) decay)"
+
+[shape.steepener]
+short_weight = -0.65
+long_weight = 0.9
+citation = "Commission Delegated Regulation (EU) 2024/856, Article 2(4)"
+
+[shape.flattener]
+short_weight = 0.8
+long_weight = -0.6
+citation = "Commission Delegated Regulation (EU) 2024/856, Article 2(4)"
+
+[currency.USD]
+parallel_bp = 200
+short_bp = 300
+long_bp = 150
+citation = "Commission Delegated Regulation (EU) 2024/856, Annex Part A (USD row: parallel 200 bp, short 300 bp, long 150 bp)"
+
+[currency.SEK]
+parallel_bp = 200
+short_bp = 300
+long_bp = 150
+citation = "Commission Delegated Regulation (EU) 2024/856, Annex Part A (SEK row: parallel 200 bp, short 300 bp, long 150 bp)"

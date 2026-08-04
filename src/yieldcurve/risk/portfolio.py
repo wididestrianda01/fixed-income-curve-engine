@@ -8,13 +8,19 @@ Scope: the supported portfolio is explicitly single-currency. A portfolio file
 must declare its ``currency``; positions carry no currency of their own and no
 FX mapping exists, so every notional is in the declared currency — an FX
 mapping table or a per-position currency is rejected at load time.
+
+The scenario results this module aggregates are an illustrative Delta EVE
+comparison for educational analysis: the EU 2024/856 shocks are applied to a
+stylised book and the revaluation deltas are compared. The historical risk
+numbers are a linearized delta VaR/ES proxy. Nothing here is a regulatory
+measure, and no capital is computed.
 """
 
 from __future__ import annotations
 
 import math
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Sequence, Set
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -95,13 +101,25 @@ class Portfolio:
         Every field is validated for its exact TOML type, finiteness, date
         order, frequency, tenor grid, enum membership, and the single-currency
         declaration before any instrument is constructed (error policy: reject
-        invalid data before arithmetic).
+        invalid data before arithmetic). Unknown keys are rejected at every
+        level: only ``currency``, ``position`` and the documented
+        ``tier1_capital`` are accepted at the top, and each position only the
+        fields valid for its kind. ``tier1_capital`` is the disclosed invented
+        capital denominator of the demo exhibit: it exists only to give the
+        illustrative outlier comparison something to divide by. It is
+        not regulatory capital; no regulatory capital is computed here.
 
         Raises:
-            PortfolioError: with position context, on any malformed input.
+            PortfolioError: with file and position context, on any malformed input.
         """
         with path.open("rb") as handle:
-            document = tomllib.load(handle)
+            try:
+                document = tomllib.load(handle)
+            except tomllib.TOMLDecodeError as exc:
+                raise PortfolioError(f"{path}: invalid TOML: {exc}") from None
+        _check_unknown_keys(
+            path, "top level", set(document), {"currency", "position", "tier1_capital"}
+        )
         entries = document.get("position", [])
         if not isinstance(entries, list):
             raise PortfolioError(f"{path}: 'position' must be an array of tables")
@@ -122,11 +140,21 @@ class Portfolio:
                     f"{path} declares a {mapping!r} mapping; the supported portfolio "
                     "is single-currency and no FX mapping exists"
                 )
+        if "tier1_capital" in document:
+            capital = document["tier1_capital"]
+            if isinstance(capital, bool) or not isinstance(capital, (int, float)):
+                raise PortfolioError(
+                    f"{path}: tier1_capital must be a number, got {type(capital).__name__}"
+                )
+            if not math.isfinite(float(capital)) or float(capital) <= 0.0:
+                raise PortfolioError(
+                    f"{path}: tier1_capital must be a positive finite number, got {capital!r}"
+                )
         positions = []
         for entry in entries:
             if not isinstance(entry, dict):
                 raise PortfolioError(f"{path}: each [[position]] entry must be a table")
-            positions.append(_position_from_entry(entry))
+            positions.append(_position_from_entry(path, entry))
         return cls(positions=tuple(positions))
 
 
@@ -135,6 +163,32 @@ def _day_count(name: str) -> DayCount:
         return _DAY_COUNTS[name]
     except KeyError:
         raise PortfolioError(f"unknown day_count {name!r}") from None
+
+
+_COMMON_POSITION_KEYS = frozenset({"label", "kind", "notional"})
+_BOND_POSITION_KEYS = _COMMON_POSITION_KEYS | {
+    "issue",
+    "maturity",
+    "coupon",
+    "frequency",
+    "day_count",
+}
+_SWAP_POSITION_KEYS = _COMMON_POSITION_KEYS | {
+    "start",
+    "maturity",
+    "fixed_rate",
+    "fixed_frequency",
+    "fixed_day_count",
+    "float_tenor",
+    "float_day_count",
+    "pay_fixed",
+}
+
+
+def _check_unknown_keys(path: Path, context: str, keys: set[str], allowed: Set[str]) -> None:
+    unknown = keys - allowed
+    if unknown:
+        raise PortfolioError(f"{path}: {context} unknown key(s) {sorted(unknown)}")
 
 
 def _required(entry: dict[str, Any], field: str) -> Any:
@@ -204,7 +258,7 @@ def _require_frequency(entry: dict[str, Any], field: str, label: str) -> int:
     return frequency
 
 
-def _position_from_entry(entry: dict[str, Any]) -> Position:
+def _position_from_entry(path: Path, entry: dict[str, Any]) -> Position:
     if "currency" in entry:
         raise PortfolioError(
             f"position {entry.get('label', '<unlabelled>')!r} declares its own "
@@ -213,6 +267,8 @@ def _position_from_entry(entry: dict[str, Any]) -> Position:
         )
     kind = _require_string(entry, "kind", "<unlabelled>")
     label = _require_string(entry, "label", "<unlabelled>")
+    allowed = _BOND_POSITION_KEYS if kind == "bond" else _SWAP_POSITION_KEYS
+    _check_unknown_keys(path, f"position {label!r}", set(entry), allowed)
     notional = _require_number(entry, "notional", label)
     if notional == 0.0:
         raise PortfolioError(f"position {label!r}: notional must be non-zero")
@@ -274,10 +330,11 @@ def present_value(portfolio: Portfolio, curves: CurveSet, asof: date) -> float:
 
 
 def delta_eve(portfolio: Portfolio, curves: CurveSet, asof: date, scenario: Scenario) -> float:
-    """Change in economic value of equity under ``scenario``.
+    """Illustrative Delta EVE comparison: change in economic value of equity
+    under ``scenario``, revalued on the shocked curve set.
 
     Signed like :func:`yieldcurve.risk.sensitivities.dv01`: negative when the shock destroys
-    value.
+    value. Educational analysis only — this is not a regulatory EVE measure.
     """
     base = present_value(portfolio, curves, asof)
     shocked = present_value(portfolio, shift_curveset(curves, scenario), asof)
@@ -290,7 +347,7 @@ def eve_ladder(
     asof: date,
     scenarios: Sequence[Scenario],
 ) -> dict[str, float]:
-    """ΔEVE for each scenario, keyed by name, in the order given."""
+    """Illustrative Delta EVE for each scenario, keyed by name, in the order given."""
     return {s.name: delta_eve(portfolio, curves, asof, s) for s in scenarios}
 
 

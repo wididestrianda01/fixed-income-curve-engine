@@ -30,7 +30,7 @@ from yieldcurve.risk.portfolio import (
     present_value,
     var_es,
 )
-from yieldcurve.risk.scenarios import bcbs_scenarios
+from yieldcurve.risk.scenarios import eu_scenarios
 from yieldcurve.risk.sensitivities import (
     convexity,
     dv01,
@@ -135,7 +135,7 @@ def _section_c(state: AppState) -> None:
     st.subheader("The IRRBB board")
     book = portfolio()
     curves = sek_curveset(state.asof, state.method)
-    scenarios = bcbs_scenarios("SEK")
+    scenarios = eu_scenarios("SEK")
     ladder = eve_ladder(book, curves, state.asof, scenarios)
     base = present_value(book, curves, state.asof)
 

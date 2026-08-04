@@ -1,11 +1,13 @@
 # A stylised Swedish banking book. Every bond is a real Riksgälden benchmark taken from
 # data/snapshots/2026-07-24/riksgalden_gov_bonds.csv — real ISIN, real coupon, real
-# maturity. The notionals are invented: they are chosen so the six BCBS d368 scenarios
-# produce visibly different ΔEVE, which is the point of the exhibit. This is not anyone's
-# actual balance sheet.
+# maturity. The notionals are invented: they are chosen so the six EU 2024/856
+# supervisory shock scenarios (see src/yieldcurve/risk/scenarios.toml) produce visibly
+# different illustrative Delta EVE, which is the point of the exhibit. This is not
+# anyone's actual balance sheet.
 #
-# tier1_capital is likewise illustrative. It exists only to give the 15% IRRBB outlier
-# threshold something to divide by.
+# tier1_capital is likewise invented and is disclosed as such. It exists only to give
+# the illustrative outlier comparison something to divide by; it is not regulatory
+# capital.
 
 tier1_capital = 4_000_000_000.0
 currency = "SEK"
