@@ -22,9 +22,9 @@ quotes. Log-linear and cubic-log-DF satisfy that to 1e-4 relative. Monotone
 convex does not: its amendment tests are branches on which region a forward
 falls into, so a 1bp bump can flip a region and reshape the curve between
 knots, and additivity breaks by around 1.4% on the test quote set. The default
-stays monotone convex to match the rest of the library, but a desk hedging off
-this ladder should pass a smooth method — a hedge ratio that jumps when a quote
-moves one basis point is not one you can trade.
+stays monotone convex; the library's canonical build is log-linear DF. A desk
+hedging off this ladder should pass a smooth method — a hedge ratio that jumps
+when a quote moves one basis point is not one you can trade.
 """
 
 from __future__ import annotations

@@ -9,7 +9,10 @@ interpolation, whose exactness contract is enforced: a canonical build that did
 not reprice every quote within tolerance is a bug and fails loudly. Comparative
 methods (cubic log-DF, monotone convex) remain available as overlays built on
 the canonical nodes; their residuals are measured with
-``yieldcurve.curves.bootstrap.repricing_report``, never asserted to vanish.
+``yieldcurve.curves.bootstrap.repricing_report``, never asserted to vanish. A
+``method=`` parameter also remains on the builders: a direct sequential
+bootstrap that is not an overlay and carries no exact-repricing guarantee,
+kept only for tooling — ``scripts/write_golden.py`` and notebook 04 use it.
 """
 
 from __future__ import annotations
