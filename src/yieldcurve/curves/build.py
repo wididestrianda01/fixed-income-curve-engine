@@ -8,7 +8,8 @@ Builders default to the canonical method, log-linear discount-factor
 interpolation, whose exactness contract is enforced: a canonical build that did
 not reprice every quote within tolerance is a bug and fails loudly. Comparative
 methods (cubic log-DF, monotone convex) remain available as overlays built on
-the canonical nodes; their residuals are measured with
+the canonical nodes via ``yieldcurve.curves.interpolation.overlay_curve``;
+their residuals are measured with
 ``yieldcurve.curves.bootstrap.repricing_report``, never asserted to vanish. A
 ``method=`` parameter also remains on the builders: a direct sequential
 bootstrap that is not an overlay and carries no exact-repricing guarantee,
