@@ -117,6 +117,11 @@ def test_write_packaged_regenerates_the_resource() -> None:
     packaged = resources.files("yieldcurve.data").joinpath("illustrative_swaption_vols.csv")
     before = packaged.read_bytes()
 
+    # Assert the write is a no-op BEFORE invoking it: a drift would otherwise
+    # rewrite the tracked CSV and then fail on == before, leaving the working
+    # tree dirty mid-debug.
+    assert before == packaged_csv_bytes(snapshot_asof())
+
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--write-packaged"],
         capture_output=True,
@@ -126,7 +131,6 @@ def test_write_packaged_regenerates_the_resource() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "Regenerated" in result.stdout
-    assert packaged.read_bytes() == packaged_csv_bytes(snapshot_asof())
     assert packaged.read_bytes() == before
 
 

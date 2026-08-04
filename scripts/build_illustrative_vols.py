@@ -147,7 +147,8 @@ def main(argv: list[str] | None = None) -> int:
             "packaged snapshot manifest."
         )
     )
-    parser.add_argument(
+    write_mode = parser.add_mutually_exclusive_group()
+    write_mode.add_argument(
         "--root",
         type=Path,
         default=None,
@@ -157,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             "of the packaged resource"
         ),
     )
-    parser.add_argument(
+    write_mode.add_argument(
         "--write-packaged",
         action="store_true",
         help=(
