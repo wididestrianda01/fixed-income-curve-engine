@@ -433,23 +433,24 @@ def test_weighted_fit_reports_unweighted_residual_metrics() -> None:
     """Weights steer the objective but not the reported metrics: rmse and
     max_abs_error are unweighted errors of the fitted curve against the fit
     data (every observation weighted equally), recomputed here by hand from the
-    fitted curve. The weighted analogue differs, pinning the semantics."""
+    fitted curve. The weights are also verified to steer the fit: the weighted
+    parameter vector differs from the unweighted one."""
     times = (0.25, 1.0, 3.0, 5.0, 10.0, 20.0)
     zeros = (0.021, 0.024, 0.027, 0.029, 0.032, 0.034)
     weights = tuple(10.0 if t >= 10.0 else 1.0 for t in times)
 
     result = Svensson.fit(times, zeros, reference_date=REFERENCE, weights=weights)
+    plain = Svensson.fit(times, zeros, reference_date=REFERENCE)
 
     errors = [result.curve.zero(float(t)) - z for t, z in zip(times, zeros, strict=True)]
     unweighted_rmse = math.sqrt(sum(e * e for e in errors) / len(errors))
     unweighted_max = max(abs(e) for e in errors)
-    weighted_rmse = math.sqrt(
-        sum(w * e * e for w, e in zip(weights, errors, strict=True)) / len(errors)
-    )
 
     assert result.rmse == pytest.approx(unweighted_rmse, rel=1e-12)
     assert result.max_abs_error == pytest.approx(unweighted_max, rel=1e-12)
-    assert result.rmse != pytest.approx(weighted_rmse, rel=1e-3)
+    weighted_params = (*result.curve.beta, *result.curve.tau)
+    plain_params = (*plain.curve.beta, *plain.curve.tau)
+    assert weighted_params != plain_params
 
 
 # --- allocation-free Nelson-Siegel evaluation (CORE-09) ----------------------

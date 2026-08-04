@@ -171,7 +171,7 @@ def _validate_fit_inputs(
     except (TypeError, ValueError) as exc:
         raise FitError(f"{label} weights must be numeric, got {weights!r}") from exc
     if t.size == 0:
-        raise FitError(f"{label} got no observations")
+        raise FitError(f"{label} fit got no observations")
     if t.size < n_params:
         raise FitError(
             f"{label} has {n_params} parameters; {t.size} observations cannot identify it"
