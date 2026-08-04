@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 
 import numpy as np
@@ -231,6 +232,34 @@ def test_pca_exposure_retains_the_empirical_component_scale() -> None:
     assert set(exposures) == {"level", "slope"}
     for name, sd in zip(result.component_names, result.component_sd, strict=True):
         assert exposures[name] == pytest.approx(durations[name] * sd, rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    "measure",
+    [pca_durations, pca_exposure],
+    ids=["pca_durations", "pca_exposure"],
+)
+def test_pca_measures_reject_a_materially_zero_base_pv(
+    history_result: PCAResult, measure: Callable[..., dict[str, float]]
+) -> None:
+    """Error policy: a normalized PCA measure must not divide by a materially
+    zero present value. A 40-year zero-coupon bond on a 50% flat curve prices
+    at 100*exp(-0.5*40) ≈ 2e-7 — far below MIN_UNIT_PRICE x face — so both
+    APIs raise PCAError (via the _require_base_price wrapper) instead of
+    returning inf/NaN."""
+    bond = FixedCouponBond(
+        issue=ASOF,
+        maturity=date(2066, 7, 24),
+        coupon=0.0,
+        frequency=1,
+        day_count=DayCount.ACT_ACT_ICMA,
+        calendar=USGovernmentBondCalendar(),
+        bdc=BusinessDayConvention.FOLLOWING,
+    )
+    curves = CurveSet.single(FlatCurve(reference_date=ASOF, rate=0.5))
+
+    with pytest.raises(PCAError, match="materially zero"):
+        measure(bond, curves, ASOF, history_result)
 
 
 def test_economic_labels_stay_pc_when_loading_shape_fails() -> None:
