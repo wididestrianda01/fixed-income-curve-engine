@@ -441,6 +441,12 @@ def test_config_loads_from_package_resources_without_a_checkout() -> None:
     currencies = config["currency"]
     assert isinstance(currencies, dict)
     assert "USD" in currencies and "SEK" in currencies
+    # The shape citation is validated as required by the loader and surfaced in
+    # the returned mapping, so round-tripping callers see what was validated.
+    shape = config["shape"]
+    assert isinstance(shape, dict)
+    assert isinstance(shape["citation"], str) and shape["citation"].strip()
+    assert "2024/856" in shape["citation"]
     assert {s.name for s in eu_scenarios("USD")} == EXPECTED_NAMES
 
 

@@ -14,8 +14,10 @@ or regulatory reporting.
 Everything in ``yieldcurve.risk`` that needs a moved curve calls
 ``shift_curve``. Effective duration, key-rate duration, PCA duration and the
 EU scenario ΔEVE are then the same computation with a different
-``Scenario`` — which is what makes ``sum(krd) == effective_duration`` an
-identity rather than a coincidence.
+``Scenario`` — which is what makes ``sum(krd)`` approximate
+``effective_duration`` within the numerical tolerance documented in
+``yieldcurve.risk.keyrate`` (the central-difference O(bump²) truncation
+error), not an exact identity.
 """
 
 from __future__ import annotations
@@ -83,24 +85,44 @@ class _ShiftedCurve:
     def reference_date(self) -> date:
         return self.base.reference_date
 
-    def zero(self, t: float) -> float:
-        shocked = self.base.zero(t) + self.scenario.shift(t)
+    def _zero_with_shift(self, t: float) -> tuple[float, float, bool]:
+        """(floored zero rate, shift actually applied, floor bound) at ``t``.
+
+        ``zero`` and ``df`` share this single computation so the closed-form
+        decision in ``df`` is made by the same arithmetic that produced the
+        floored rate, never by a separately recomputed sum. The applied shift
+        is ``scenario.shift(t)`` exactly when the floor did not bind and
+        ``rate - base.zero(t)`` when it did; a future reordering of the
+        arithmetic inside ``zero`` therefore cannot silently flip the path.
+        """
+        base_zero = self.base.zero(t)
+        applied = self.scenario.shift(t)
+        shocked = base_zero + applied
         floor = self.scenario.floor
         if floor is None:
-            return shocked
-        effective = min(floor(t), self.base.zero(t))
-        return max(shocked, effective)
+            return shocked, applied, False
+        effective = min(floor(t), base_zero)
+        floored = max(shocked, effective)
+        if floored == shocked:
+            # The floor did not bind: the floored rate is the shocked rate, so
+            # ``df`` can keep the exact ``df * exp(-shift*t)`` closed form,
+            # bit-identical to the unfloored path.
+            return floored, applied, False
+        return floored, floored - base_zero, True
+
+    def zero(self, t: float) -> float:
+        return self._zero_with_shift(t)[0]
 
     def df(self, t: float) -> float:
         if self.scenario.floor is None:
             return self.base.df(t) * math.exp(-self.scenario.shift(t) * t)
-        zero = self.zero(t)
-        if zero == self.base.zero(t) + self.scenario.shift(t):
+        rate, applied, bound = self._zero_with_shift(t)
+        if not bound:
             # The floor did not bind: keep the exact closed-form path so a
             # floored scenario that never clamps prices identically to an
             # unfloored one.
-            return self.base.df(t) * math.exp(-self.scenario.shift(t) * t)
-        return math.exp(-zero * t)
+            return self.base.df(t) * math.exp(-applied * t)
+        return math.exp(-rate * t)
 
     def fwd(self, t1: float, t2: float) -> float:
         if t2 <= t1:
@@ -172,6 +194,7 @@ class _CurrencyShocks:
 @dataclass(frozen=True)
 class _ScenarioConfig:
     short_decay_years: float
+    shape_citation: str
     steepener: _RotationShapes
     flattener: _RotationShapes
     currencies: dict[str, _CurrencyShocks]
@@ -237,7 +260,7 @@ def _parse_config(document: dict[str, object], source: str) -> _ScenarioConfig:
     decay = _number(
         source, "shape.short_decay_years", shape_raw["short_decay_years"], positive=True
     )
-    _text(source, "shape.citation", shape_raw.get("citation"))
+    shape_citation = _text(source, "shape.citation", shape_raw.get("citation"))
 
     rotations: dict[str, _RotationShapes] = {}
     for name in ("steepener", "flattener"):
@@ -281,6 +304,7 @@ def _parse_config(document: dict[str, object], source: str) -> _ScenarioConfig:
         )
     return _ScenarioConfig(
         short_decay_years=decay,
+        shape_citation=shape_citation,
         steepener=rotations["steepener"],
         flattener=rotations["flattener"],
         currencies=currencies,
@@ -328,6 +352,7 @@ def load_scenarios(path: Path | None = None) -> dict[str, object]:
     return {
         "shape": {
             "short_decay_years": config.short_decay_years,
+            "citation": config.shape_citation,
             "steepener": {
                 "short_weight": config.steepener.short_weight,
                 "long_weight": config.steepener.long_weight,
