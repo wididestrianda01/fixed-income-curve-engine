@@ -118,9 +118,6 @@ class _ShiftedCurve:
             return self.base.df(t) * math.exp(-self.scenario.shift(t) * t)
         rate, applied, bound = self._zero_with_shift(t)
         if not bound:
-            # The floor did not bind: keep the exact closed-form path so a
-            # floored scenario that never clamps prices identically to an
-            # unfloored one.
             return self.base.df(t) * math.exp(-applied * t)
         return math.exp(-rate * t)
 

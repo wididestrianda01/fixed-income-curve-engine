@@ -289,7 +289,12 @@ def test_observed_rate_below_the_floor_is_applied_instead() -> None:
 def test_up_shocks_are_not_affected_by_the_floor() -> None:
     base = FlatCurve(reference_date=ASOF, rate=0.001)
     shifted = shift_curve(base, _by_name(eu_scenarios("USD"))["parallel_up"])
+    unfloored = shift_curve(base, parallel(0.02))
     assert shifted.zero(10.0) == pytest.approx(0.021, abs=1e-15)
+    # The floor never binds for an up shock: zero and df must stay
+    # bit-identical to the unfloored path (the golden pipeline depends on it).
+    assert shifted.zero(10.0) == unfloored.zero(10.0)
+    assert shifted.df(10.0) == unfloored.df(10.0)
 
 
 def test_floored_discount_factors_derive_from_the_floored_zero() -> None:
@@ -297,6 +302,8 @@ def test_floored_discount_factors_derive_from_the_floored_zero() -> None:
     so pricing and zero-rate views cannot disagree."""
     base = FlatCurve(reference_date=ASOF, rate=0.001)
     shifted = shift_curve(base, _by_name(eu_scenarios("USD"))["parallel_down"])
+    assert shifted.df(10.0) == math.exp(-shifted.zero(10.0) * 10.0)
+    assert shifted.df(0.0) == math.exp(-shifted.zero(0.0) * 0.0)
     assert shifted.df(10.0) == pytest.approx(math.exp(-shifted.zero(10.0) * 10.0), rel=1e-15)
     assert shifted.df(0.0) == pytest.approx(math.exp(-shifted.zero(0.0) * 0.0), rel=1e-15)
 
