@@ -52,4 +52,8 @@ kaggle.json
 .vscode/
 .serena/
 .superpowers/sdd/
+.worktrees/
 .hypothesis/
+notebooks/src/
+.claude-flow/
+.swarm/

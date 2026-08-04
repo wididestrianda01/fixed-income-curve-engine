@@ -192,7 +192,6 @@ class OIS:
     float_day_count: DayCount = DayCount.ACT_360
     notional: float = 1_000_000.0
     pay_fixed: bool = True
-    compounded: bool = True
 
     def fixed_schedule(self) -> tuple[date, ...]:
         return schedule(self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc)
