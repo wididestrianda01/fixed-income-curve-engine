@@ -78,18 +78,23 @@ def sek_curveset(asof: date, method: InterpMethod) -> CurveSet:
 
 @st.cache_resource(show_spinner=False)
 def usd_curves(asof: date, method: InterpMethod) -> CurveSet:
-    """OIS discounting with a 3M forecast curve — the post-2008 arrangement."""
+    """Constructed USD curve set: OIS discounting from the constructed OIS
+    par-rate grid plus a constructed 3M forecast basis. Both inputs are
+    constructed/illustrative, not observed live quotes (see DATA_SOURCES.md)."""
     return usd_curveset(load_snapshot(), asof, method=method)
 
 
 @st.cache_data(show_spinner=False)
 def usd_ois_quote_table(asof: date) -> tuple[Quote, ...]:
+    """Constructed OIS par rates (Treasury CMT plus a dated indicative spread),
+    not observed live quotes."""
     return usd_ois_quotes(load_snapshot(), asof)
 
 
 @st.cache_data(show_spinner=False)
 def cmt_history() -> pd.DataFrame:
-    """Daily US Treasury constant-maturity yields, long form: date, tenor_years, rate."""
+    """Daily US Treasury CMT par yields (public source), long form: date,
+    tenor_years, rate."""
     return load_snapshot().load("fred_treasury_cmt_history")
 
 
@@ -106,10 +111,12 @@ shortfall estimate."""
 
 @st.cache_data(show_spinner=False)
 def pnl_sample() -> tuple[npt.NDArray[np.float64], tuple[float, ...]]:
-    """The most recent VAR_WINDOW daily rate changes, with their tenor grid.
+    """The most recent VAR_WINDOW daily changes of the CMT par-yield history,
+    with their tenor grid.
 
     Windowing happens here rather than in yieldcurve.risk.portfolio so that the library
-    function stays free of presentation choices.
+    function stays free of presentation choices. The changes are a CMT-implied history
+    proxy, not an observed funding-rate history.
     """
     changes, tenors = daily_changes(cmt_history())
     return changes[-VAR_WINDOW:], tenors
