@@ -358,6 +358,34 @@ def test_from_toml_rejects_a_non_finite_notional(tmp_path: Path) -> None:
         Portfolio.from_toml(bad)
 
 
+def test_from_toml_rejects_an_fx_mapping(tmp_path: Path) -> None:
+    """The supported portfolio is single-currency: a currency conversion
+    table is rejected with a named error — no FX mapping exists (spec
+    section 4)."""
+    bad = tmp_path / "fx.toml"
+    bad.write_text(
+        'currency = "SEK"\n[fx]\nUSD = 10.5\n'
+        '[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="fx"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_position_with_its_own_currency(tmp_path: Path) -> None:
+    bad = tmp_path / "posfx.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\ncurrency = "USD"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="currency"):
+        Portfolio.from_toml(bad)
+
+
 def test_bucket_exposure_is_negative_for_a_long_fixed_rate_book(
     flat_curves: CurveSet,
 ) -> None:
@@ -450,6 +478,19 @@ def test_historical_pnl_rejects_unsorted_tenors(
         historical_pnl(two_bonds, flat_curves, ASOF, np.zeros((3, 4)), (0.25, 5.0, 1.0, 10.0))
 
 
+def test_historical_pnl_rejects_an_invalid_key_grid(
+    two_bonds: Portfolio, flat_curves: CurveSet
+) -> None:
+    """Aligned-history validation before arithmetic: the bucket key grid must
+    be a strictly ascending finite ladder, like the tenor grid."""
+    tenors = (0.25, 1.0, 5.0, 10.0)
+    changes = np.zeros((3, len(tenors)))
+    with pytest.raises(PortfolioError, match="increasing"):
+        historical_pnl(two_bonds, flat_curves, ASOF, changes, tenors, keys=(0.25, 1.0, 10.0, 5.0))
+    with pytest.raises(PortfolioError, match="finite"):
+        historical_pnl(two_bonds, flat_curves, ASOF, changes, tenors, keys=(0.25, np.nan, 5.0))
+
+
 def test_bucket_exposure_rejects_an_invalid_bump(
     two_bonds: Portfolio, flat_curves: CurveSet
 ) -> None:
@@ -499,6 +540,16 @@ def test_var_es_tail_direction_matches_hand_derived_values() -> None:
     assert var == pytest.approx(100.0, rel=1e-12)
     assert es == pytest.approx(1200.0 / 11.0, rel=1e-12)
     assert es > var
+
+
+def test_var_es_rejects_a_gain_at_the_confidence_quantile() -> None:
+    """Mandatory Task 6 handoff: var_es reports non-negative loss magnitudes.
+    When the confidence quantile of the loss distribution is a gain (negative
+    loss magnitude), the convention has no loss to report — raising with the
+    quantile as context is honest, a silent negative 'positive loss' is not."""
+    pnl = np.full(200, 1.0)  # every observation a gain; losses all -1.0
+    with pytest.raises(PortfolioError, match="gain"):
+        var_es(pnl, confidence=0.95)
 
 
 def test_var_es_rejects_nonfinite_pnl() -> None:

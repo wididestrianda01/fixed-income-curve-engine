@@ -6,7 +6,8 @@ number looks wrong, the fault is upstream in the pricer or the scenario definiti
 
 Scope: the supported portfolio is explicitly single-currency. A portfolio file
 must declare its ``currency``; positions carry no currency of their own and no
-FX mapping exists, so every notional is in the declared currency.
+FX mapping exists, so every notional is in the declared currency — an FX
+mapping table or a per-position currency is rejected at load time.
 """
 
 from __future__ import annotations
@@ -115,6 +116,12 @@ class Portfolio:
                 f"{path} must declare a single non-empty 'currency' string "
                 "(the supported portfolio is single-currency; no FX mapping exists)"
             )
+        for mapping in ("fx", "fx_mapping"):
+            if mapping in document:
+                raise PortfolioError(
+                    f"{path} declares a {mapping!r} mapping; the supported portfolio "
+                    "is single-currency and no FX mapping exists"
+                )
         positions = []
         for entry in entries:
             if not isinstance(entry, dict):
@@ -198,6 +205,12 @@ def _require_frequency(entry: dict[str, Any], field: str, label: str) -> int:
 
 
 def _position_from_entry(entry: dict[str, Any]) -> Position:
+    if "currency" in entry:
+        raise PortfolioError(
+            f"position {entry.get('label', '<unlabelled>')!r} declares its own "
+            "currency; the supported portfolio is single-currency and positions "
+            "carry no currency"
+        )
     kind = _require_string(entry, "kind", "<unlabelled>")
     label = _require_string(entry, "label", "<unlabelled>")
     notional = _require_number(entry, "notional", label)
@@ -327,17 +340,20 @@ def historical_pnl(
     """Linearized delta P&L proxy: one number per row of observed daily rate
     changes, by bucket exposure.
 
-    Each row of ``changes`` holds absolute zero-rate moves at ``tenors``. Those
-    are linearly interpolated onto ``keys`` (flat beyond the ends) and
-    contracted against the portfolio's bucket exposures. This is a first-order
-    proxy — bucket exposures are recomputed at the valuation date and moved
-    linearly with the rates — so it is *not* full revaluation and carries no
-    FRTB or regulatory VaR implication.
+    Each row of ``changes`` is one dated observation holding the absolute
+    zero-rate moves at every ``tenor`` — a row with a missing tenor (a
+    non-finite entry) is a misaligned history and is rejected before
+    arithmetic. The moves are linearly interpolated onto ``keys`` (flat beyond
+    the ends) and contracted against the portfolio's bucket exposures. This is
+    a first-order proxy — bucket exposures are recomputed at the valuation date
+    and moved linearly with the rates — so it is *not* full revaluation and
+    carries no FRTB or regulatory VaR implication.
 
     Raises:
         PortfolioError: if ``changes`` is not 2-D with one column per tenor,
-            contains non-finite values, or has no rows; if ``tenors`` is empty,
-            non-finite, or not strictly increasing.
+            contains non-finite values, or has no rows; if ``tenors`` or
+            ``keys`` is not a strictly ascending finite grid of at least two
+            values.
     """
     if changes.ndim != 2 or changes.shape[1] != len(tenors):
         raise PortfolioError(
@@ -348,10 +364,15 @@ def historical_pnl(
     if not np.isfinite(changes).all():
         raise PortfolioError("changes must be finite")
     grid = np.asarray(tenors, dtype=np.float64)
-    if grid.size == 0 or not np.isfinite(grid).all():
-        raise PortfolioError(f"tenors must be finite and non-empty, got {tenors}")
+    if grid.size < 2 or not np.isfinite(grid).all():
+        raise PortfolioError(f"tenors must be finite and contain at least two values, got {tenors}")
     if np.any(np.diff(grid) <= 0.0):
         raise PortfolioError(f"tenors must be strictly increasing, got {tenors}")
+    key_grid = np.asarray(keys, dtype=np.float64)
+    if key_grid.size < 2 or not np.isfinite(key_grid).all():
+        raise PortfolioError(f"keys must be finite and contain at least two values, got {keys}")
+    if np.any(np.diff(key_grid) <= 0.0):
+        raise PortfolioError(f"keys must be strictly increasing, got {keys}")
     exposure = bucket_exposure(portfolio, curves, asof, keys)
     targets = np.asarray(list(exposure), dtype=np.float64)
     projected = np.column_stack(
@@ -362,16 +383,25 @@ def historical_pnl(
 
 def var_es(pnl: npt.NDArray[np.float64], *, confidence: float = 0.99) -> tuple[float, float]:
     """Historical value-at-risk and expected shortfall of the linearized delta
-    P&L, as positive loss magnitudes.
+    P&L, as non-negative loss magnitudes.
+
+    Convention: losses are the negated P&L observations; VaR is the
+    ``confidence`` quantile of the loss distribution and ES is the mean of the
+    losses at or beyond that quantile. Both are reported as *non-negative loss
+    magnitudes*. When the quantile of the loss distribution is itself a gain
+    (negative), the convention has no loss to report at that confidence and
+    ``var_es`` raises with the actual quantile as context — a negative
+    "positive loss magnitude" is never returned.
 
     A first-order (bucket-exposure) proxy on historical rate changes: no full
     revaluation, no FRTB or other regulatory measure.
 
     Raises:
         PortfolioError: if ``confidence`` is outside ``(0, 1)``, if ``pnl`` is
-            empty or non-finite, or if fewer than ten observations fall beyond
-            the quantile — an expected shortfall averaged over a handful of
-            points is not a measurement.
+            empty or non-finite, if the loss-distribution quantile at
+            ``confidence`` is a gain (negative), or if fewer than ten
+            observations fall beyond the quantile — an expected shortfall
+            averaged over a handful of points is not a measurement.
     """
     if not 0.0 < confidence < 1.0:
         raise PortfolioError(f"confidence must lie in (0, 1), got {confidence}")
@@ -382,6 +412,12 @@ def var_es(pnl: npt.NDArray[np.float64], *, confidence: float = 0.99) -> tuple[f
         raise PortfolioError("pnl must be finite")
     losses = -pnl_arr
     threshold = float(np.quantile(losses, confidence))
+    if threshold < 0.0:
+        raise PortfolioError(
+            f"no loss at {confidence:.0%} confidence: the loss-distribution "
+            f"quantile is a gain of {-threshold:.6g}, so the loss magnitude "
+            "would be negative; var_es reports non-negative loss magnitudes only"
+        )
     tail = losses[losses >= threshold]
     if tail.size < _MIN_TAIL_OBSERVATIONS:
         raise PortfolioError(
