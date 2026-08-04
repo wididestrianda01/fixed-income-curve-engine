@@ -116,3 +116,52 @@ def test_initial_curve_fit_holds_for_every_parameter_pair(a: float, sigma: float
     model = HullWhite(curve=FlatCurve(reference_date=ASOF, rate=0.03), a=a, sigma=sigma)
 
     assert model.zcb(0.0, T, model.r0) == pytest.approx(model.curve.df(T), abs=1e-10)
+
+
+# -- zero-coupon bond option boundary contracts -------------------------------------
+
+
+def test_zbo_at_expiry_equal_to_maturity_is_the_discounted_intrinsic(flat_model: HullWhite) -> None:
+    tenor = 5.0
+    call = flat_model.zbo(tenor, tenor, 0.9, call=True)
+    put = flat_model.zbo(tenor, tenor, 0.9, call=False)
+
+    assert call == pytest.approx(flat_model.curve.df(tenor) * max(1.0 - 0.9, 0.0), abs=1e-14)
+    assert put == pytest.approx(flat_model.curve.df(tenor) * max(0.9 - 1.0, 0.0), abs=1e-14)
+    # put-call parity survives at expiry == maturity
+    assert call - put == pytest.approx(flat_model.curve.df(tenor) * (1.0 - 0.9), abs=1e-14)
+
+
+def test_zbo_rejects_non_positive_strikes(flat_model: HullWhite) -> None:
+    with pytest.raises(ModelError, match="strike"):
+        flat_model.zbo(2.0, 5.0, 0.0, call=True)
+    with pytest.raises(ModelError, match="strike"):
+        flat_model.zbo(2.0, 5.0, -0.5, call=True)
+
+
+def test_zbo_is_stable_at_tiny_expiry(flat_model: HullWhite) -> None:
+    # As expiry -> 0 the option collapses to its discounted intrinsic value.
+    # The variance term must not underflow to zero (and then divide by zero)
+    # on the way there.
+    value = flat_model.zbo(1e-16, 5.0, 0.85, call=True)
+
+    assert value == pytest.approx(max(flat_model.curve.df(5.0) - 0.85, 0.0), abs=1e-6)
+
+
+# -- small-argument numerical stability ---------------------------------------------
+
+
+def test_B_stays_linear_in_the_gap_for_tiny_gaps() -> None:  # noqa: N802
+    # (1 - exp(-a*gap)) / a cancels catastrophically when a*gap ~ 1e-16;
+    # the expm1 form keeps B == gap to machine precision.
+    tiny = HullWhite(curve=FlatCurve(reference_date=ASOF, rate=0.03), a=1.0, sigma=0.01)
+    gap = 1e-20
+
+    assert tiny.B(0.0, gap) == pytest.approx(gap, rel=1e-6)
+
+
+def test_conditional_sd_reduces_to_sigma_sqrt_gap_for_tiny_gaps() -> None:
+    tiny = HullWhite(curve=FlatCurve(reference_date=ASOF, rate=0.03), a=1.0, sigma=0.01)
+    gap = 1e-20
+
+    assert tiny.conditional_sd(0.0, gap) == pytest.approx(tiny.sigma * math.sqrt(gap), rel=1e-6)

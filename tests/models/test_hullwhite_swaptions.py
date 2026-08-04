@@ -13,7 +13,7 @@ from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.curves.pricing import par_rate
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
 from yieldcurve.instruments import Swaption, VanillaSwap
-from yieldcurve.models.hullwhite import HullWhite
+from yieldcurve.models.hullwhite import HullWhite, ModelError
 
 ASOF = date(2026, 7, 24)
 SEED = 20260727
@@ -130,11 +130,89 @@ def test_swaption_matches_a_monte_carlo_estimate(model: HullWhite, curves: Curve
     assert abs(analytic - estimates.mean()) < 4 * standard_error
 
 
-def test_normal_vol_round_trips_through_the_price(model: HullWhite) -> None:
-    swaption = _swaption(0.03)
-    vol = model.swaption_normal_vol(swaption, ASOF)
+def test_normal_vol_matches_an_independent_quantlib_price(
+    model: HullWhite, curves: CurveSet
+) -> None:
+    """The model vol is checked against QuantLib's Hull-White engine.
 
-    assert 0.0 < vol < 0.05
+    A same-model round trip cannot detect a systematic pricing error, so the
+    market-implied normal vol is rebuilt from QuantLib's Jamshidian NPV and the
+    textbook Bachelier inversion instead.
+    """
+    ql = pytest.importorskip("QuantLib")
+
+    from scipy.optimize import brentq
+    from scipy.stats import norm as scipy_norm
+
+    from yieldcurve.curves.pricing import annuity, par_rate
+    from yieldcurve.curves.protocol import curve_time
+
+    strike = 0.03
+    swaption = _swaption(strike)
+    a, sigma = model.a, model.sigma
+
+    asof = ql.Date(24, 7, 2026)
+    ql.Settings.instance().evaluationDate = asof
+    handle = ql.YieldTermStructureHandle(
+        ql.FlatForward(asof, 0.03, ql.Actual365Fixed(), ql.Continuous)
+    )
+    calendar = ql.UnitedStates(ql.UnitedStates.GovernmentBond)
+    start, end = ql.Date(24, 7, 2028), ql.Date(24, 7, 2033)
+
+    def _schedule(tenor):  # type: ignore[no-untyped-def]
+        return ql.Schedule(
+            start,
+            end,
+            tenor,
+            calendar,
+            ql.ModifiedFollowing,
+            ql.ModifiedFollowing,
+            ql.DateGeneration.Backward,
+            False,
+        )
+
+    index = ql.IborIndex(
+        "Float3M",
+        ql.Period(3, ql.Months),
+        0,
+        ql.USDCurrency(),
+        calendar,
+        ql.ModifiedFollowing,
+        False,
+        ql.Actual360(),
+        handle,
+    )
+    swap = ql.VanillaSwap(
+        ql.VanillaSwap.Payer,
+        1.0,
+        _schedule(ql.Period(ql.Semiannual)),  # type: ignore[no-untyped-call]
+        strike,
+        ql.Thirty360(ql.Thirty360.BondBasis),
+        _schedule(ql.Period(3, ql.Months)),  # type: ignore[no-untyped-call]
+        index,
+        0.0,
+        ql.Actual360(),
+    )
+    theirs = ql.Swaption(swap, ql.EuropeanExercise(start))
+    theirs.setPricingEngine(ql.JamshidianSwaptionEngine(ql.HullWhite(handle, a, sigma), handle))
+
+    # the forward is a plain curve quantity; QuantLib's own fairRate() cannot
+    # be queried on an engine-less swap in this build, so ours stands in
+    forward = par_rate(swaption.swap, curves, ASOF)
+    expiry = curve_time(ASOF, swaption.expiry)
+    undiscounted = theirs.NPV() / (swaption.swap.notional * annuity(swaption.swap, curves, ASOF))
+
+    def _bachelier(v: float) -> float:
+        moneyness = forward - strike
+        s = v * math.sqrt(expiry)
+        d = moneyness / s
+        return moneyness * float(scipy_norm.cdf(d)) + s * float(scipy_norm.pdf(d))
+
+    independent_vol = float(brentq(lambda v: _bachelier(v) - undiscounted, 1e-12, 1.0, xtol=1e-14))
+
+    ours = model.swaption_normal_vol(swaption, ASOF)
+
+    assert ours == pytest.approx(independent_vol, rel=1e-2)
 
 
 def test_a_deeply_out_of_the_money_swaption_is_near_zero_but_positive(
@@ -143,6 +221,55 @@ def test_a_deeply_out_of_the_money_swaption_is_near_zero_but_positive(
     value = model.swaption(_swaption(0.15), ASOF)
 
     assert 0.0 < value < 1e-4
+
+
+def test_a_swaption_with_a_strike_different_from_the_swap_fixed_rate_is_rejected(
+    model: HullWhite,
+) -> None:
+    from yieldcurve.models.hullwhite import SwaptionStrikeError
+
+    swaption = _swaption(0.03)
+    mismatched = Swaption(expiry=swaption.expiry, swap=swaption.swap, strike=0.04, pay_fixed=True)
+
+    with pytest.raises(SwaptionStrikeError, match=r"0\.04"):
+        model.swaption(mismatched, ASOF)
+
+
+def test_jamshidian_finds_a_far_root_by_widening_the_bracket() -> None:
+    # Forward rates near 150% push the breakeven short rate above the initial
+    # bracket [-0.5, 1.0]; the root solver must widen the bracket dynamically.
+    curve = FlatCurve(reference_date=ASOF, rate=1.5)
+    model = HullWhite(curve=curve, a=0.05, sigma=0.01)
+    swap = VanillaSwap(
+        start=date(2027, 7, 24),
+        maturity=date(2028, 7, 24),
+        fixed_rate=2.0,
+        fixed_frequency=2,
+        fixed_day_count=DayCount.THIRTY_360_BOND,
+        float_tenor="3M",
+        float_day_count=DayCount.ACT_360,
+        calendar=USGovernmentBondCalendar(),
+        bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
+        notional=1.0,
+    )
+    swaption = Swaption(expiry=date(2027, 7, 24), swap=swap, strike=2.0, pay_fixed=True)
+
+    value = model.swaption(swaption, ASOF)
+
+    assert math.isfinite(value)
+    assert value > 0.0
+
+
+def test_jamshidian_rejects_negative_cash_flow_coefficients_with_trade_context(
+    model: HullWhite,
+) -> None:
+    # strike == fixed_rate == -2% is internally consistent, but the negative
+    # coupons break the Jamshidian decomposition, which needs non-negative
+    # coefficients
+    swaption = _swaption(-0.02)
+
+    with pytest.raises(ModelError, match="non-negative"):
+        model.swaption(swaption, ASOF)
 
 
 def test_quantlib_swaption_parity() -> None:

@@ -58,3 +58,39 @@ def test_implied_vol_inverts_the_price(
 def test_a_price_below_intrinsic_is_rejected() -> None:
     with pytest.raises(ValueError, match="intrinsic"):
         bachelier_vol(0.001, 0.04, 0.03, 2.0, pay=True)
+
+
+def test_negative_expiry_is_rejected_before_the_intrinsic_shortcut() -> None:
+    # expiry must be validated before any intrinsic shortcut is taken
+    with pytest.raises(ValueError, match="expiry"):
+        bachelier_vol(0.01, 0.04, 0.03, -1.0, pay=True)
+
+
+def test_a_price_above_the_maximum_attainable_vol_is_rejected() -> None:
+    with pytest.raises(ValueError, match="maximum price"):
+        bachelier_vol(1.0, 0.04, 0.03, 2.0, pay=True)
+
+
+def test_a_non_zero_price_at_zero_expiry_is_rejected() -> None:
+    # at zero expiry every volatility prices the option at intrinsic
+    with pytest.raises(ValueError, match="intrinsic"):
+        bachelier_vol(0.011, 0.04, 0.03, 0.0, pay=True)
+
+
+@pytest.mark.parametrize(
+    ("vol", "expiry"),
+    [(1e-9, 1e-6), (1e-12, 1e-12), (1e-15, 1e-9)],
+)
+def test_tiny_volumes_are_inverted_without_being_swallowed(vol: float, expiry: float) -> None:
+    # prices just above intrinsic must not be collapsed to a zero vol
+    price = bachelier_price(0.03, 0.03, vol, expiry, pay=True)
+
+    assert price > 0.0
+    assert abs(bachelier_vol(price, 0.03, 0.03, expiry, pay=True) - vol) <= 2e-14
+
+
+def test_non_finite_inputs_are_rejected() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        bachelier_price(float("nan"), 0.03, 0.008, 2.0, pay=True)
+    with pytest.raises(ValueError, match="finite"):
+        bachelier_vol(0.01, 0.04, float("inf"), 2.0, pay=True)
