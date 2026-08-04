@@ -14,6 +14,9 @@ graphify-out/
 data/raw/
 data/processed/
 data/cache/
+# Regenerated refresh output, pre-Task-11: yieldcurve.market.refresh still
+# writes here via DEFAULT_SNAPSHOT_ROOT and must not be committable.
+data/snapshots/
 *.parquet
 
 # --- Models / artifacts ---

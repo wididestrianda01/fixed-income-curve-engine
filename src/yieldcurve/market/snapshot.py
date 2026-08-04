@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import re
 import tomllib
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
 from importlib import resources
 from pathlib import Path
 from typing import Any, NoReturn
@@ -35,7 +37,16 @@ _FLOAT_FORMAT = "%.10g"
 
 
 class MissingDatasetError(FileNotFoundError):
-    """A requested dataset is absent from the packaged snapshot or external root."""
+    """A requested dataset is absent, or the packaged snapshot is unusable.
+
+    The class predates the manifest and also covers packaged-manifest problems
+    (missing or invalid manifest, a snapshot-date mismatch, or a manifest
+    requested on an external root), which share the same remedy: the packaged
+    snapshot is incomplete or unusable. It deliberately keeps one name and
+    subclasses :class:`FileNotFoundError`: ``app.py`` catches this exact class
+    in its error-rendering path (``RENDER_ERRORS``), so renaming it would
+    silently drop the app's handling of snapshot failures.
+    """
 
 
 class DatasetNameError(ValueError):
@@ -58,8 +69,9 @@ def _fail_packaged(source: str, message: str) -> NoReturn:
     raise MissingDatasetError(f"packaged snapshot {source}: {message}")
 
 
-def _packaged_manifest() -> dict[str, Any]:
-    """Parse the packaged ``snapshot_manifest.toml`` resource."""
+@lru_cache(maxsize=1)
+def _load_packaged_manifest() -> dict[str, Any]:
+    """Parse the packaged ``snapshot_manifest.toml`` resource, once per process."""
     resource = resources.files(_PACKAGE).joinpath(_MANIFEST_NAME)
     try:
         handle = resource.open("rb")
@@ -70,6 +82,11 @@ def _packaged_manifest() -> dict[str, Any]:
             return tomllib.load(handle)
         except tomllib.TOMLDecodeError as exc:
             _fail_packaged("manifest", f"is invalid TOML: {exc}")
+
+
+def _packaged_manifest() -> dict[str, Any]:
+    """The packaged manifest, parsed once and returned fresh on every call."""
+    return deepcopy(_load_packaged_manifest())
 
 
 def _manifest_datasets(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -112,7 +129,10 @@ class Snapshot:
                 )
 
     def _external_target(self, name: str) -> Path:
-        assert self.root is not None  # _validate_name called by callers first
+        if self.root is None:  # guarded by load/save, which check root first
+            raise ValueError(
+                "internal error: an external snapshot target requires an explicit root"
+            )
         return self.root / self.date.isoformat() / f"{name}.csv"
 
     @property

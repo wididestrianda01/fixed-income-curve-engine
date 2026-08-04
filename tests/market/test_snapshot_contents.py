@@ -21,9 +21,69 @@ EXPECTED_COLUMNS = {
         "outstanding_nominal",
     ],
     "fred_treasury_cmt": ["series_id", "tenor_years", "rate"],
+    "fred_treasury_cmt_history": ["date", "tenor_years", "rate"],
     "usd_ois_swaps": ["tenor_years", "par_rate"],
+    "usd_forecast_basis": ["tenor_years", "basis_bp"],
     "ecb_spot_curve": ["tenor_years", "zero_rate"],
     "ecb_svensson_parameters": ["parameter", "value"],
+    "illustrative_swaption_vols": ["expiry", "maturity", "vol"],
+}
+
+# Per-column units, transcribed by hand from the manifest so the pin is
+# independent of both the CSV headers and the manifest text it guards.
+EXPECTED_UNITS = {
+    "riksbank_bills": {
+        "tenor": "tenor label (1M, 3M, 6M)",
+        "maturity_date": "ISO 8601 date",
+        "rate": "decimal yield (0.01933 = 1.933%)",
+    },
+    "riksbank_gov_benchmarks": {
+        "tenor": "tenor label (2Y, 5Y, 7Y, 10Y)",
+        "maturity_date": "ISO 8601 date",
+        "yield": "decimal yield (0.02478 = 2.478%)",
+    },
+    "riksbank_swestr": {
+        "tenor": "tenor label (ON, 1W, 1M, 2M, 3M, 6M)",
+        "rate": "decimal rate (0.0164 = 1.64%)",
+    },
+    "riksgalden_gov_bonds": {
+        "isin": "ISIN identifier",
+        "coupon": "decimal coupon rate (0.01 = 1%)",
+        "issue_date": "ISO 8601 date",
+        "maturity_date": "ISO 8601 date",
+        "outstanding_nominal": "outstanding nominal in SEK",
+    },
+    "fred_treasury_cmt": {
+        "series_id": "FRED series identifier (DGS1M..DGS30)",
+        "tenor_years": "tenor in years",
+        "rate": "decimal yield (0.038 = 3.8%)",
+    },
+    "fred_treasury_cmt_history": {
+        "date": "ISO 8601 observation date",
+        "tenor_years": "tenor in years",
+        "rate": "decimal yield",
+    },
+    "usd_ois_swaps": {
+        "tenor_years": "tenor in years",
+        "par_rate": "decimal par rate (0.0412 = 4.12%)",
+    },
+    "usd_forecast_basis": {
+        "tenor_years": "tenor in years",
+        "basis_bp": "basis spread in basis points",
+    },
+    "ecb_spot_curve": {
+        "tenor_years": "tenor in years",
+        "zero_rate": "decimal continuously compounded zero rate (0.0264139995 = 2.64139995%)",
+    },
+    "ecb_svensson_parameters": {
+        "parameter": "Svensson parameter name (BETA0..BETA3, TAU1, TAU2)",
+        "value": "BETA in percent, TAU in years",
+    },
+    "illustrative_swaption_vols": {
+        "expiry": "ISO 8601 option expiry date",
+        "maturity": "ISO 8601 swap maturity date",
+        "vol": "normal volatility in basis points",
+    },
 }
 
 EXPECTED_CLASSIFICATION = {
@@ -49,6 +109,22 @@ def test_committed_snapshot_has_the_expected_schema(
 
     assert list(frame.columns) == columns
     assert not frame.empty
+
+
+@pytest.mark.parametrize(("name", "units"), EXPECTED_UNITS.items())
+def test_manifest_units_match_the_independent_pin(
+    snapshot: Snapshot, name: str, units: dict[str, str]
+) -> None:
+    """The manifest's per-column units equal the independently transcribed pin."""
+    assert snapshot.manifest["datasets"][name]["units"] == units
+
+
+def test_expected_schema_pins_cover_every_manifest_dataset(snapshot: Snapshot) -> None:
+    """No packaged dataset escapes the independent columns/units pins."""
+    datasets = set(snapshot.manifest["datasets"])
+
+    assert set(EXPECTED_COLUMNS) == datasets
+    assert set(EXPECTED_UNITS) == datasets
 
 
 def test_rates_are_decimals_not_percentages(snapshot: Snapshot) -> None:
