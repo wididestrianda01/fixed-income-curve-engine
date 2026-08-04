@@ -1,20 +1,166 @@
 name: CI
+
 on: [push, pull_request]
+
+# SEC-04: the workflow never needs write access, so the default job token is
+# restricted to read-only contents access.
+permissions:
+  contents: read
+
 jobs:
-  test:
+  lint:
+    name: Lint (ruff, mypy)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-      - run: pip install -e ".[dev,app]"
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: mypy
-      - run: pytest
-      - run: pytest --nbmake notebooks/
+          # SEC-04: do not persist the checkout credential on the runner.
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA); 3.12 is the only
+      # supported interpreter (requires-python >=3.12,<3.13).
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      # HYGIENE-02/SEC-03: every CI job installs from the lockfile with
+      # --frozen; dev, app, and notebook runtimes all come from extras.
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Mypy (strict, per pyproject)
+        run: uv run mypy
+
+  package-test:
+    name: Package tests (coverage-gated)
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA)
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      # The coverage-gated command runs the full suite minus app and notebook
+      # hygiene, which includes the Task 13 artifact tests (test_build.py,
+      # test_distribution.py); they need a built wheel/sdist, so build first
+      # (fresh checkouts have no dist-review/).
+      - name: Build wheel and sdist for artifact tests
+        run: uv build --out-dir dist-review
+      # TQ-10: coverage flags live ONLY on the package-test command. The app
+      # and notebook commands run with neutral pytest options, so a green
+      # notebook run can never be mistaken for package coverage.
+      - name: Package tests (TQ-10 coverage gate)
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py \
+            --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90 \
+            2>&1 | tee coverage-package.log
+      # TQ-10/step 7: assert the report actually contains a TOTAL line. A run
+      # that measures no coverage (zero or missing) must fail CI even if every
+      # test passes; --cov-fail-under=90 already fails the step on <90%.
+      - name: Assert coverage report line
+        run: |
+          grep -E '^TOTAL[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+%' \
+            coverage-package.log || {
+            echo "error: no 'TOTAL' coverage line in report — zero/missing coverage must not green-light CI" >&2
+            exit 1
+          }
+
+  app-smoke:
+    name: App smoke tests (neutral options)
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA)
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      # TQ-07: app integration/presentation checks run with neutral pytest
+      # options (-o addopts=''), decoupled from package coverage.
+      - name: App smoke tests
+        run: uv run pytest -o addopts='' tests/app
+
+  notebook-hygiene:
+    name: Notebook hygiene checks
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA)
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      # TQ-09: notebook-hygiene assertions run outside the coverage-gated
+      # package-test command, with neutral pytest options.
+      - name: Notebook hygiene
+        run: uv run pytest -o addopts='' tests/test_notebook_hygiene.py
+
+  notebooks-exec:
+    name: Notebook execution (nbmake)
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA)
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      # TQ-07/step 7: notebook execution is a separate job with neutral pytest
+      # options — it carries no coverage flags and cannot green-light CI on
+      # behalf of the coverage gate, which lives in package-test.
+      - name: Execute notebooks
+        run: uv run pytest -o addopts='' --nbmake notebooks
+
+  artifacts:
+    name: Wheel quickstart and artifact-manifest checks
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2 (pinned full commit SHA)
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.4.0 (pinned full commit SHA)
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
+        with:
+          python-version: "3.12"
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+      - name: Install locked dependencies
+        run: uv sync --frozen --extra dev --extra app --extra notebooks
+      # Step 6: the Task 13 packaging gate builds first; the artifact tests
+      # (wheel quickstart + artifact-manifest checks) run against the outputs.
+      - name: Build wheel and sdist
+        run: uv build --out-dir dist-review
+      - name: Wheel quickstart and artifact-manifest checks
+        run: uv run pytest tests/test_build.py tests/test_distribution.py

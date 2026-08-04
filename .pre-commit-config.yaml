@@ -1,6 +1,8 @@
 repos:
+  # SEC-04: executable hooks are pinned to a full commit SHA, not a tag ref;
+  # rev is the commit behind the v0.16.0 tag of astral-sh/ruff-pre-commit.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
+    rev: cb8c523fd4835aba42af70f4cad5568db4df0b6c  # v0.16.0
     hooks:
       - id: ruff-check
         args: [--fix]
