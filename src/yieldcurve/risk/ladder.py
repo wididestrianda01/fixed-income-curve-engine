@@ -29,6 +29,7 @@ when a quote moves one basis point is not one you can trade.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date
@@ -72,9 +73,20 @@ def par_delta_ladder(
     Signed like ``dv01``: positive means the position loses when the rate rises.
     ``discount_curve`` is passed through to the bootstrap, so a forecast curve
     is rebuilt dual-curve exactly as it was built.
+
+    Raises:
+        ValueError: if ``quotes`` is empty, contains two quotes with the same
+            maturity (the ladder keys by maturity, so a duplicate would
+            silently overwrite one entry), or ``bump`` is not a positive finite
+            rate.
     """
     if not quotes:
         raise ValueError("A delta ladder needs at least one quote")
+    if not math.isfinite(bump) or bump <= 0.0:
+        raise ValueError(f"par_delta_ladder bump must be a positive finite rate, got {bump}")
+    maturities = [quote.instrument.maturity for quote in quotes]  # type: ignore[attr-defined]
+    if len(set(maturities)) != len(maturities):
+        raise ValueError("A delta ladder needs quotes with distinct maturities")
 
     def repriced(quoted: Sequence[Quote]) -> float:
         curve = bootstrap(quoted, asof=asof, method=method, discount_curve=discount_curve)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -10,8 +12,9 @@ import pytest
 
 from yieldcurve.calendars import NullCalendar
 from yieldcurve.conventions import BusinessDayConvention, DayCount
+from yieldcurve.curves.pricing import par_rate
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
-from yieldcurve.instruments import FixedCouponBond
+from yieldcurve.instruments import FixedCouponBond, VanillaSwap
 from yieldcurve.risk.keyrate import SEK_KEY_RATES
 from yieldcurve.risk.portfolio import (
     Portfolio,
@@ -63,14 +66,27 @@ def two_bonds() -> Portfolio:
     )
 
 
-def test_present_value_is_additive_across_positions(
+def test_present_value_matches_hand_discounted_cashflows(
     two_bonds: Portfolio, flat_curves: CurveSet
 ) -> None:
-    total = present_value(two_bonds, flat_curves, ASOF)
-    parts = sum(
-        present_value(Portfolio(positions=(p,)), flat_curves, ASOF) for p in two_bonds.positions
+    """Independent oracle: the 1.25% SGB in ``two_bonds`` is discounted by hand
+    from its known cash flows. 30/360 annual coupons pay 0.125 per 100 face
+    every May 12, plus 100.125 at maturity; the flat 2% curve discounts with
+    e^{-0.02t}. No library pricing code participates."""
+    long_only = Portfolio(positions=(two_bonds.positions[0],))
+    flows = (
+        (date(2027, 5, 12), 0.125),
+        (date(2028, 5, 12), 0.125),
+        (date(2029, 5, 12), 0.125),
+        (date(2030, 5, 12), 0.125),
+        (date(2031, 5, 12), 100.125),
     )
-    assert total == pytest.approx(parts, rel=1e-12)
+    expected = (
+        sum(amount * math.exp(-0.02 * (d - ASOF).days / 365.0) for d, amount in flows)
+        / 100.0
+        * 1_000_000.0
+    )
+    assert present_value(long_only, flat_curves, ASOF) == pytest.approx(expected, rel=1e-9)
 
 
 def test_short_position_contributes_negative_value(flat_curves: CurveSet) -> None:
@@ -88,6 +104,81 @@ def test_short_position_contributes_negative_value(flat_curves: CurveSet) -> Non
     assert present_value(long, flat_curves, ASOF) == pytest.approx(
         -present_value(short, flat_curves, ASOF), rel=1e-12
     )
+    assert present_value(long, flat_curves, ASOF) > 0.0
+
+
+def test_bond_positions_scale_by_face_value(flat_curves: CurveSet) -> None:
+    """One scale contract for bonds: position value is notional / face x price.
+    Two bonds with identical terms but different face amounts quote different
+    prices per unit of face, so the same position notional must buy the same
+    book value."""
+
+    def _make(face: float) -> FixedCouponBond:
+        return FixedCouponBond(
+            issue=date(2020, 5, 12),
+            maturity=date(2031, 5, 12),
+            coupon=0.02,
+            frequency=1,
+            day_count=DayCount.THIRTY_360_BOND,
+            calendar=NullCalendar(),
+            bdc=BusinessDayConvention.UNADJUSTED,
+            face=face,
+        )
+
+    small = _make(100.0)
+    large = _make(250.0)
+    notional = 1_000_000.0
+
+    value_small = present_value(
+        Portfolio(positions=(Position(label="s", instrument=small, notional=notional),)),
+        flat_curves,
+        ASOF,
+    )
+    value_large = present_value(
+        Portfolio(positions=(Position(label="l", instrument=large, notional=notional),)),
+        flat_curves,
+        ASOF,
+    )
+    assert value_small == pytest.approx(value_large, rel=1e-12)
+
+
+def test_swap_positions_scale_by_notional(flat_curves: CurveSet) -> None:
+    """One scale contract for swaps: the swap's own notional is divided out of
+    the quoted value, and the position notional scales linearly. Striking at a
+    non-par rate keeps the book value non-degenerate."""
+    base = VanillaSwap(
+        start=ASOF,
+        maturity=date(2031, 7, 24),
+        fixed_rate=0.03,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.THIRTY_360_BOND,
+        float_tenor="3M",
+        float_day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+    )
+    unit = replace(base, notional=1.0)
+    big = replace(base, notional=3_000_000.0)
+    notional = 5_000_000.0
+
+    value_unit = present_value(
+        Portfolio(positions=(Position(label="u", instrument=unit, notional=notional),)),
+        flat_curves,
+        ASOF,
+    )
+    value_big = present_value(
+        Portfolio(positions=(Position(label="b", instrument=big, notional=notional),)),
+        flat_curves,
+        ASOF,
+    )
+    assert value_unit == pytest.approx(value_big, rel=1e-9)
+
+    doubled = present_value(
+        Portfolio(positions=(Position(label="d", instrument=unit, notional=2 * notional),)),
+        flat_curves,
+        ASOF,
+    )
+    assert doubled == pytest.approx(2.0 * value_unit, rel=1e-12)
 
 
 def test_delta_eve_is_negative_for_a_long_book_under_a_rate_rise(
@@ -121,6 +212,7 @@ def test_from_toml_round_trips_the_demo_portfolio() -> None:
 def test_from_toml_rejects_an_unknown_instrument_kind(tmp_path: Path) -> None:
     bad = tmp_path / "bad.toml"
     bad.write_text(
+        'currency = "SEK"\n'
         '[[position]]\nlabel = "x"\nkind = "collateralised_moon_rock"\nnotional = 1.0\n',
         encoding="utf-8",
     )
@@ -130,8 +222,139 @@ def test_from_toml_rejects_an_unknown_instrument_kind(tmp_path: Path) -> None:
 
 def test_from_toml_rejects_a_position_missing_a_required_field(tmp_path: Path) -> None:
     bad = tmp_path / "bad.toml"
-    bad.write_text('[[position]]\nlabel = "x"\nkind = "bond"\nnotional = 1.0\n', encoding="utf-8")
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
     with pytest.raises(PortfolioError, match="issue"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_requires_a_declared_currency(tmp_path: Path) -> None:
+    """The supported portfolio is explicitly single-currency: the file must
+    declare which currency the notionals are in (spec section 4)."""
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        '[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\n"
+        "coupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="currency"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_non_string_currency(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        "currency = 2024\n"
+        '[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="currency"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_wrong_typed_fields(tmp_path: Path) -> None:
+    """Exact TOML types, no coercion (error policy): a string notional or
+    coupon, a float frequency, or a string date is invalid input, not
+    something to coerce."""
+    common = 'label = "x"\nkind = "bond"\n'
+    cases = {
+        "notional": common + 'notional = "one million"\n',
+        "coupon": common + 'coupon = "0.01"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        "frequency": common + "coupon = 0.01\nfrequency = 1.5\n"
+        "issue = 2020-05-12\nmaturity = 2031-05-12\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        "issue": common + "coupon = 0.01\nfrequency = 1\n"
+        'issue = "2020-05-12"\nmaturity = 2031-05-12\n'
+        'day_count = "30/360"\nnotional = 1.0\n',
+    }
+    for field, body in cases.items():
+        bad = tmp_path / f"{field}.toml"
+        bad.write_text(f'currency = "SEK"\n[[position]]\n{body}', encoding="utf-8")
+        with pytest.raises(PortfolioError, match=field):
+            Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_zero_notional(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 0.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="notional"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_an_invalid_frequency(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 5\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="frequency"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_reversed_bond_dates(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2031-05-12\nmaturity = 2020-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = 1.0\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="after"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_an_invalid_float_tenor(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "swap"\n'
+        "start = 2026-07-24\nmaturity = 2031-07-24\nfixed_rate = 0.03\n"
+        "fixed_frequency = 1\nfixed_day_count = '30/360'\n"
+        'float_tenor = "9M"\nfloat_day_count = "ACT/360"\npay_fixed = true\n'
+        "notional = 1.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="float_tenor"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_non_boolean_pay_fixed(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "swap"\n'
+        "start = 2026-07-24\nmaturity = 2031-07-24\nfixed_rate = 0.03\n"
+        "fixed_frequency = 1\nfixed_day_count = '30/360'\n"
+        'float_tenor = "3M"\nfloat_day_count = "ACT/360"\npay_fixed = "yes"\n'
+        "notional = 1.0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="pay_fixed"):
+        Portfolio.from_toml(bad)
+
+
+def test_from_toml_rejects_a_non_finite_notional(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'currency = "SEK"\n[[position]]\nlabel = "x"\nkind = "bond"\n'
+        "issue = 2020-05-12\nmaturity = 2031-05-12\ncoupon = 0.01\nfrequency = 1\n"
+        'day_count = "30/360"\nnotional = inf\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(PortfolioError, match="notional"):
         Portfolio.from_toml(bad)
 
 
@@ -211,12 +434,76 @@ def test_historical_pnl_rejects_a_column_count_mismatch(
         historical_pnl(two_bonds, flat_curves, ASOF, np.zeros((5, 3)), (0.25, 1.0, 5.0, 10.0))
 
 
-def test_expected_shortfall_is_at_least_as_large_as_var() -> None:
-    rng = np.random.default_rng(1)
-    pnl = rng.normal(0.0, 1.0, size=2000)
-    for confidence in (0.95, 0.99):
-        var, es = var_es(pnl, confidence=confidence)
-        assert es >= var
+def test_historical_pnl_rejects_nonfinite_changes(
+    two_bonds: Portfolio, flat_curves: CurveSet
+) -> None:
+    tenors = (0.25, 1.0, 5.0, 10.0)
+    changes = np.array([[1e-4, np.nan, 1e-4, 1e-4]])
+    with pytest.raises(PortfolioError, match="finite"):
+        historical_pnl(two_bonds, flat_curves, ASOF, changes, tenors)
+
+
+def test_historical_pnl_rejects_unsorted_tenors(
+    two_bonds: Portfolio, flat_curves: CurveSet
+) -> None:
+    with pytest.raises(PortfolioError, match="increasing"):
+        historical_pnl(two_bonds, flat_curves, ASOF, np.zeros((3, 4)), (0.25, 5.0, 1.0, 10.0))
+
+
+def test_bucket_exposure_rejects_an_invalid_bump(
+    two_bonds: Portfolio, flat_curves: CurveSet
+) -> None:
+    with pytest.raises(PortfolioError, match="bump"):
+        bucket_exposure(two_bonds, flat_curves, ASOF, SEK_KEY_RATES, bump=0.0)
+    with pytest.raises(PortfolioError, match="bump"):
+        bucket_exposure(two_bonds, flat_curves, ASOF, SEK_KEY_RATES, bump=-1e-4)
+
+
+def test_bucket_exposure_remains_available_for_a_par_swap(flat_curves: CurveSet) -> None:
+    """A par swap prices at zero, where normalized duration is undefined, but
+    the monetary BPV ladder never divides by the base price. Its sum must
+    reconcile to the parallel monetary sensitivity computed independently."""
+    base = VanillaSwap(
+        start=ASOF,
+        maturity=date(2031, 7, 24),
+        fixed_rate=0.0,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.THIRTY_360_BOND,
+        float_tenor="3M",
+        float_day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+        notional=1.0,
+    )
+    swap = replace(base, fixed_rate=par_rate(base, flat_curves, ASOF))
+    book = Portfolio(positions=(Position(label="par", instrument=swap, notional=1_000_000.0),))
+
+    exposure = bucket_exposure(book, flat_curves, ASOF, SEK_KEY_RATES)
+    assert all(np.isfinite(v) for v in exposure.values())
+
+    bump = 1e-4
+    up = present_value(book, shift_curveset(flat_curves, parallel(bump)), ASOF)
+    down = present_value(book, shift_curveset(flat_curves, parallel(-bump)), ASOF)
+    assert sum(exposure.values()) == pytest.approx((up - down) / (2.0 * bump), rel=1e-6)
+
+
+def test_var_es_tail_direction_matches_hand_derived_values() -> None:
+    """Independent oracle for the loss-tail direction: losses of 1 (x190),
+    100 (x10) and 200 (x1). With n=201 the linear-quantile convention puts the
+    95% quantile exactly on the 190th order statistic, so VaR = 100 and
+    ES = mean of the tail beyond it = 1200/11 — a strict es > var pin on
+    asymmetric loss data, not an inequality over random draws."""
+    pnl = np.array([-1.0] * 190 + [-100.0] * 10 + [-200.0])
+    var, es = var_es(pnl, confidence=0.95)
+
+    assert var == pytest.approx(100.0, rel=1e-12)
+    assert es == pytest.approx(1200.0 / 11.0, rel=1e-12)
+    assert es > var
+
+
+def test_var_es_rejects_nonfinite_pnl() -> None:
+    with pytest.raises(PortfolioError, match="finite"):
+        var_es(np.array([1.0, np.nan, 2.0]))
 
 
 def test_var_es_raises_when_the_tail_is_too_thin() -> None:
@@ -241,6 +528,7 @@ def test_from_toml_rejects_an_empty_file(tmp_path: Path) -> None:
 def test_from_toml_rejects_an_unknown_day_count(tmp_path: Path) -> None:
     bad = tmp_path / "bad.toml"
     bad.write_text(
+        'currency = "SEK"\n'
         "[[position]]\n"
         'label = "x"\n'
         'kind = "bond"\n'

@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
 
-from yieldcurve.calendars import USGovernmentBondCalendar
+from yieldcurve.calendars import NullCalendar, USGovernmentBondCalendar
 from yieldcurve.conventions import BusinessDayConvention, DayCount
-from yieldcurve.curves.pricing import price
+from yieldcurve.curves.pricing import par_rate, price
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
-from yieldcurve.instruments import Bill, FixedCouponBond
+from yieldcurve.instruments import Bill, FixedCouponBond, VanillaSwap
 from yieldcurve.risk.keyrate import (
     SEK_KEY_RATES,
     USD_KEY_RATES,
@@ -89,9 +90,70 @@ def test_hats_sum_to_the_bump_at_every_time(t: float) -> None:
 
 
 def test_krd_sums_to_effective_duration(bond: FixedCouponBond, flat: CurveSet) -> None:
+    """Ho hats partition unity, so the sum of the per-key central differences
+    equals the parallel central difference up to the O(bump^2) truncation error
+    of the finite differences. At the default 1bp bump that error term is
+    ~1e-8 in duration units; the 1e-6 absolute tolerance is two orders above
+    it, so the pin is on the identity, not on noise."""
     durations = krd(bond, flat, ASOF, USD_KEY_RATES)
 
     assert sum(durations.values()) == pytest.approx(effective_duration(bond, flat, ASOF), abs=1e-6)
+
+
+def test_krd_units_are_price_basis_points_per_yield_basis_point(flat: CurveSet) -> None:
+    """KRD is duration-like and carries explicit units: a 1bp rise in a key
+    rate moves the price by ``durations[k]`` price basis points (1 price bp is
+    1e-4 of price), numerically equal to years of duration — not multiplied by
+    100. Pinned by repricing the 5y key on a zero."""
+    zero = Bill(maturity=date(2031, 7, 24), day_count=DayCount.ACT_365F)
+    keys = USD_KEY_RATES
+    durations = krd(zero, flat, ASOF, keys)
+
+    base = price(zero, flat, ASOF).dirty
+    key = 5.0
+    up = price(zero, shift_curveset(flat, hat(keys, keys.index(key), 1e-4)), ASOF).dirty
+
+    assert (up - base) / base == pytest.approx(-durations[key] * 1e-4, rel=1e-3)
+
+
+def test_krd_rejects_duplicate_tenors(bond: FixedCouponBond, flat: CurveSet) -> None:
+    """A shift ladder over duplicate tenors would silently overwrite one bucket
+    with the other; the grid must be strictly ascending."""
+    with pytest.raises(ValueError, match="ascending"):
+        krd(bond, flat, ASOF, (1.0, 1.0, 5.0))
+
+
+@pytest.mark.parametrize("bump", [0.0, -1e-4, float("nan"), float("inf")])
+def test_krd_rejects_an_invalid_bump(bond: FixedCouponBond, flat: CurveSet, bump: float) -> None:
+    with pytest.raises(ValueError, match="bump"):
+        krd(bond, flat, ASOF, USD_KEY_RATES, bump=bump)
+
+
+def test_krd_rejects_a_materially_zero_base_pv(flat: CurveSet) -> None:
+    """A par swap prices at zero: KRD normalizes by that, so it must refuse
+    rather than return inf/NaN. The monetary ladder lives in portfolio
+    ``bucket_exposure``."""
+    base = VanillaSwap(
+        start=ASOF,
+        maturity=date(2031, 7, 24),
+        fixed_rate=0.0,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.THIRTY_360_BOND,
+        float_tenor="3M",
+        float_day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+        notional=1.0,
+    )
+    swap = replace(base, fixed_rate=par_rate(base, flat, ASOF))
+
+    with pytest.raises(ValueError, match="materially zero"):
+        krd(swap, flat, ASOF, SEK_KEY_RATES)
+
+
+def test_hat_rejects_a_nonfinite_size() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        hat(SEK_KEY_RATES, 1, float("nan"))
 
 
 def test_krd_is_concentrated_at_the_maturity_of_a_zero(flat: CurveSet) -> None:

@@ -128,3 +128,18 @@ def test_bumping_a_bill_moves_only_the_quote() -> None:
 def test_empty_quote_set_is_rejected() -> None:
     with pytest.raises(ValueError, match="at least one quote"):
         par_delta_ladder(_bond(5), (), ASOF)
+
+
+def test_ladder_rejects_duplicate_maturities() -> None:
+    """Two quotes on the same maturity would silently overwrite one ladder
+    entry with the other; the quote grid must be distinct."""
+    same_maturity = (_ois(2, 0.043), _ois(2, 0.044))
+
+    with pytest.raises(ValueError, match="distinct"):
+        par_delta_ladder(_bond(5), same_maturity, ASOF)
+
+
+@pytest.mark.parametrize("bump", [0.0, -1e-4, float("nan"), float("inf")])
+def test_ladder_rejects_an_invalid_bump(bump: float) -> None:
+    with pytest.raises(ValueError, match="bump"):
+        par_delta_ladder(_bond(5), QUOTES, ASOF, bump=bump)
