@@ -13,10 +13,12 @@ Expiry and maturity dates are ``asof + floor(years * 365.25)`` days, a
 documented approximation; the as-of itself is read from the packaged snapshot
 manifest, never hardcoded.
 
-By default the script regenerates the packaged resource
+Bare invocation is a dry run: it prints the exact bytes the packaged resource
+would contain (preamble + rows) and writes nothing. Writing is explicit:
+``--write-packaged`` regenerates the packaged resource
 ``src/yieldcurve/data/illustrative_swaption_vols.csv`` in place. That file is
 read-only at runtime (``Snapshot.save`` on the packaged snapshot raises), so
-this script is the deliberate regeneration path for the committed artifact —
+this flag is the deliberate regeneration path for the committed artifact —
 after running it, update the dataset's ``sha256`` in
 ``src/yieldcurve/data/snapshot_manifest.toml`` (guarded by
 ``tests/market/test_snapshot_contents.py``). With ``--root``, the grid is
@@ -25,8 +27,9 @@ instead written through the Snapshot save contract to
 
 Run:
 
-    python scripts/build_illustrative_vols.py             # regenerate packaged CSV
-    python scripts/build_illustrative_vols.py --root DIR  # write an external snapshot
+    python scripts/build_illustrative_vols.py              # print the grid (dry run)
+    python scripts/build_illustrative_vols.py --write-packaged  # regenerate packaged CSV
+    python scripts/build_illustrative_vols.py --root DIR   # write an external snapshot
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import sys
 import tomllib
 from datetime import date, timedelta
 from importlib import resources
@@ -153,6 +157,16 @@ def main(argv: list[str] | None = None) -> int:
             "of the packaged resource"
         ),
     )
+    parser.add_argument(
+        "--write-packaged",
+        action="store_true",
+        help=(
+            "regenerate src/yieldcurve/data/illustrative_swaption_vols.csv in "
+            "place (deliberate maintainer action; update the dataset's sha256 "
+            "in snapshot_manifest.toml afterwards). Bare invocation only "
+            "prints the generated grid."
+        ),
+    )
     args = parser.parse_args(argv)
 
     asof = snapshot_asof()
@@ -160,12 +174,20 @@ def main(argv: list[str] | None = None) -> int:
         snapshot = Snapshot(date=asof, root=args.root)
         target = snapshot.save("illustrative_swaption_vols", generate_grid(asof))
         print(f"Wrote external snapshot {target}")
-    else:
+    elif args.write_packaged:
         target = write_packaged(asof)
         print(
             f"Regenerated {target}\n"
             "Update the dataset's sha256 in src/yieldcurve/data/snapshot_manifest.toml "
             "after a deliberate regeneration (tests guard the checksum)."
+        )
+    else:
+        print(packaged_csv_bytes(asof).decode("utf-8"), end="")
+        print(
+            "Dry run: generated the grid above, nothing was written. Pass "
+            "--write-packaged to regenerate the packaged CSV, or --root DIR for "
+            "an external snapshot.",
+            file=sys.stderr,
         )
     return 0
 

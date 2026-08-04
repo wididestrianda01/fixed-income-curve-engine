@@ -71,7 +71,7 @@ classification = "public"
 licence = "U.S. Treasury CMT rates are public domain (citation requested); FRED terms restrict archiving and commercial use of FRED content"
 transformation = "Percentage CMT par yields divided by 100 to decimals; month tenor as fractional years (1M = 0.0833); any curve built from these inputs is a CMT-implied approximation"
 columns = ["series_id", "tenor_years", "rate"]
-units = { series_id = "FRED series identifier (DGS1M..DGS30)", tenor_years = "tenor in years", rate = "decimal yield (0.038 = 3.8%)" }
+units = { series_id = "FRED series identifier (DGS1MO..DGS30)", tenor_years = "tenor in years", rate = "decimal yield (0.038 = 3.8%)" }
 limitations = "Frozen 2026-07-24; FRED redistribution terms apply to the retrieval service, not the underlying public-domain data"
 sha256 = "d3552b694245f5dc350308a5aca81320122fb91d3c7ae4a34b3aa7b7b0204371"
 
@@ -92,7 +92,7 @@ sha256 = "898c7958f4497339b2938f63af91a999b66243a79b185f7f14160a18fda97d7e"
 observation_date = "2026-07-24"
 retrieval_date = "2026-07-24"
 publisher = "Constructed in this repository"
-primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
 classification = "constructed"
 licence = "Constructed from public-domain U.S. Treasury data plus a cited indicative spread; not a licensed market-data feed"
 transformation = "par_rate = treasury_cmt_rate + ois_tsy_spread; spread from Bloomberg generic USSW vs USGG, 2026-07-24 close, approximate +/- 2bp"

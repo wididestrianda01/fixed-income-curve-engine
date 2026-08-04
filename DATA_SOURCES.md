@@ -4,9 +4,12 @@ This repository ships one frozen, read-only market-data snapshot (dated 2026-07-
 packaged resources under `src/yieldcurve/data/`. The machine-readable
 `snapshot_manifest.toml` next to the CSVs is the authoritative dataset list and carries
 the same provenance fields; this document is its human-readable twin. The two records
-are pinned to each other by `tests/market/test_data_sources_document.py` and
-`tests/market/test_snapshot_contents.py`, so a dataset cannot drift apart from its
-provenance in one place only.
+are pinned to each other: `tests/market/test_data_sources_document.py` pins dataset
+coverage, classification, licence status and primary URL; `tests/market/
+test_snapshot_contents.py` pins observation/retrieval dates, columns, units,
+classification, licence wording and the sha256 checksums against the packaged CSV
+bytes. Together they cover the full provenance record, so a dataset cannot drift apart
+from its provenance in one place only.
 
 Every dataset below records: publisher, primary URL, retrieval and observation dates,
 raw field meaning and units, the transformation applied, licence/redistribution status
@@ -251,8 +254,10 @@ explicitly instead of asserting terms.
 **Classification:** public
 
 - **Publisher:** European Central Bank
-- **Primary URL:** same SDMX 2.1 endpoint as `ecb_spot_curve`, data flows `BETA0`,
-  `BETA1`, `BETA2`, `BETA3`, `TAU1`, `TAU2`
+- **Primary URL:**
+  `https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>`
+  (same SDMX 2.1 endpoint as `ecb_spot_curve`; data flows `BETA0`, `BETA1`, `BETA2`,
+  `BETA3`, `TAU1`, `TAU2`)
 - **Retrieval date:** 2026-07-24
 - **Observation date:** 2026-07-24
 - **Raw fields and units:** CSV columns: `parameter` (Svensson parameter name), `value`
@@ -282,9 +287,10 @@ explicitly instead of asserting terms.
   with e the option expiry in years and m the underlying swap tenor in years, run over
   expiries (0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0) and swap tenors (1.0, 2.0, 5.0, 10.0).
   Expiry/maturity dates are `asof + floor(years * 365.25)` days. Fully deterministic;
-  regenerate with `python scripts/build_illustrative_vols.py` (the packaged resource is
-  read-only at runtime, so regeneration is a deliberate maintainer action that must also
-  update the manifest sha256).
+  regenerate with `python scripts/build_illustrative_vols.py --write-packaged` (the
+  packaged resource is read-only at runtime, so regeneration is a deliberate maintainer
+  action that must also update the manifest sha256; bare invocation only prints the
+  generated grid).
 **Licence/redistribution:** verified — wholly generated in this repository from the
   stated closed form; no third-party data is involved and no redistribution restrictions
   apply to the values themselves (they are not market data).

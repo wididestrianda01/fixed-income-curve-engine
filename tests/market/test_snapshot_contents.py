@@ -54,7 +54,7 @@ EXPECTED_UNITS = {
         "outstanding_nominal": "outstanding nominal in SEK",
     },
     "fred_treasury_cmt": {
-        "series_id": "FRED series identifier (DGS1M..DGS30)",
+        "series_id": "FRED series identifier (DGS1MO..DGS30)",
         "tenor_years": "tenor in years",
         "rate": "decimal yield (0.038 = 3.8%)",
     },
