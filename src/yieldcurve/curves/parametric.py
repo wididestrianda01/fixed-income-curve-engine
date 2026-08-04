@@ -64,11 +64,11 @@ class FitError(ValueError):
 class ParametricFitResult[CurveT]:
     """The outcome of a parametric fit, with the optimizer's verdict explicit.
 
-    ``success`` is the optimizer's own success verdict; a fit that reports
-    failure, presses a parameter against its bound, or cannot identify its
-    parameters is rejected with :class:`FitError` rather than returned here, so
-    a returned result always has ``success is True`` and an empty
-    ``saturated_parameters``. The Jacobian rank and condition describe how well
+    ``success`` is informational: the fit either succeeds or raises
+    :class:`FitError` (optimizer failure, boundary saturation, or a Jacobian
+    that cannot identify the parameters), so a returned result always has
+    ``success is True`` and an empty ``saturated_parameters``. The Jacobian
+    rank and condition describe how well
     the data identifies the parameters (scipy's differential evolution provides
     no covariance, so the Jacobian state is the reported uncertainty
     diagnostic). Residual metrics are unweighted and computed on the fit data.
@@ -158,31 +158,39 @@ def _validate_fit_inputs(
         raise FitError(f"{len(times)} times but {len(zeros)} zero rates")
     if weights is not None and len(weights) != len(times):
         raise FitError(f"{len(weights)} weights but {len(times)} observations")
-    t = np.asarray(times, dtype=float)
-    z = np.asarray(zeros, dtype=float)
-    w = np.ones(len(t)) if weights is None else np.asarray(weights, dtype=float)
+    try:
+        t = np.asarray(times, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise FitError(f"{label} times must be numeric, got {times!r}") from exc
+    try:
+        z = np.asarray(zeros, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise FitError(f"{label} zero rates must be numeric, got {zeros!r}") from exc
+    try:
+        w = np.ones(len(t)) if weights is None else np.asarray(weights, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise FitError(f"{label} weights must be numeric, got {weights!r}") from exc
     if t.size == 0:
-        raise FitError(f"{label} fit got no observations")
+        raise FitError(f"{label} got no observations")
     if t.size < n_params:
         raise FitError(
             f"{label} has {n_params} parameters; {t.size} observations cannot identify it"
         )
     if not np.all(np.isfinite(t)):
-        raise FitError(f"{label} fit times must be finite, got {times}")
+        bad = [float(x) for x in t if not math.isfinite(float(x))]
+        raise FitError(f"{label} times must be finite, got non-finite {bad}")
     if not np.all(np.isfinite(z)):
-        raise FitError(f"{label} fit zero rates must be finite, got {zeros}")
+        bad = [float(x) for x in z if not math.isfinite(float(x))]
+        raise FitError(f"{label} zero rates must be finite, got non-finite {bad}")
     if not np.all(np.isfinite(w)):
-        raise FitError(f"{label} fit weights must be finite, got {weights}")
+        bad = [float(x) for x in w if not math.isfinite(float(x))]
+        raise FitError(f"{label} weights must be finite, got non-finite {bad}")
     if np.any(t <= 0.0):
-        raise FitError(
-            f"{label} fit times must be positive (t = 0 is the reference date), got {times}"
-        )
+        raise FitError(f"{label} times must be positive (t = 0 is the reference date), got {times}")
     if np.any(w <= 0.0):
-        raise FitError(f"{label} fit weights must be strictly positive, got {weights}")
+        raise FitError(f"{label} weights must be strictly positive, got {weights}")
     if np.any(t[1:] <= t[:-1]):
-        raise FitError(
-            f"{label} fit times must be strictly increasing with no duplicates, got {times}"
-        )
+        raise FitError(f"{label} times must be strictly increasing with no duplicates, got {times}")
     return t, z, w
 
 
@@ -234,7 +242,7 @@ def _fit_and_report(
         mutation=(0.5, 1.5),
         recombination=0.7,
     )
-    if not result.success or "successfully" not in result.message:
+    if not result.success:
         raise FitError(
             f"{label} fit did not converge ({result.message}); refusing to report a curve "
             "from an unsuccessful optimization"
@@ -261,7 +269,15 @@ def _fit_and_report(
 
     jac = _numerical_jacobian(model, t, best)
     jacobian_rank = int(np.linalg.matrix_rank(jac))
-    jacobian_condition = float(np.linalg.cond(jac))
+    # Column-normalize before the condition number so the rejection threshold
+    # is unit-free: the raw Jacobian mixes unitless rate parameters (~1e-2)
+    # with tau parameters in years (~1), and that unit mismatch alone would
+    # inflate the condition number. Rank is invariant under column scaling, so
+    # the rank check below is unaffected; a zero column (kept zero here) is
+    # rank-deficient and rejected there regardless.
+    column_norms = np.linalg.norm(jac, axis=0)
+    normalized_jac = jac / np.where(column_norms > 0.0, column_norms, 1.0)
+    jacobian_condition = float(np.linalg.cond(normalized_jac))
     if jacobian_rank < len(param_names):
         raise FitError(
             f"{label} fit is underidentified: Jacobian rank {jacobian_rank} < "

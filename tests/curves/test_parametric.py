@@ -147,8 +147,10 @@ def test_svensson_rmse_is_zero_against_its_own_output() -> None:
 
 def test_rmse_rejects_non_finite_or_mismatched_inputs() -> None:
     curve = Svensson(beta=(0.03, -0.01, 0.02, -0.005), tau=(1.5, 8.0), reference_date=REFERENCE)
-    with pytest.raises(FitError, match="finite"):
+    with pytest.raises(FitError, match=r"zero rates must be finite, got non-finite \[nan\]"):
         curve.rmse((1.0, 2.0), (0.02, float("nan")))
+    with pytest.raises(FitError, match=r"times must be finite, got non-finite \[nan\]"):
+        curve.rmse((1.0, float("nan")), (0.02, 0.03))
     with pytest.raises(FitError, match="times but"):
         curve.rmse((1.0, 2.0), (0.02,))
 
@@ -212,6 +214,27 @@ def test_invalid_weights_are_rejected() -> None:
         Svensson.fit(times, zeros, reference_date=REFERENCE, weights=(1.0, 1.0))
 
 
+def test_non_numeric_fit_inputs_raise_a_named_fit_error() -> None:
+    """Non-numeric inputs raise the fit's named FitError (not numpy's raw
+    conversion ValueError), and the message names the offending input."""
+    times = (0.25, 1.0, 3.0, 5.0, 10.0, 20.0)
+    zeros = (0.021, 0.024, 0.027, 0.029, 0.032, 0.034)
+    with pytest.raises(FitError, match=r"times must be numeric"):
+        Svensson.fit(("abc", *times[1:]), zeros, reference_date=REFERENCE)  # type: ignore[arg-type]
+    with pytest.raises(FitError, match=r"zero rates must be numeric"):
+        Svensson.fit(times, ("abc", *zeros[1:]), reference_date=REFERENCE)  # type: ignore[arg-type]
+    with pytest.raises(FitError, match=r"weights must be numeric"):
+        NelsonSiegel.fit(
+            times,
+            zeros,
+            reference_date=REFERENCE,
+            weights=("abc",) + (1.0,) * 5,  # type: ignore[arg-type]
+        )
+    curve = Svensson(beta=(0.03, -0.01, 0.02, -0.005), tau=(1.5, 8.0), reference_date=REFERENCE)
+    with pytest.raises(FitError, match=r"times must be numeric"):
+        curve.rmse(("abc", 2.0), (0.02, 0.03))  # type: ignore[arg-type]
+
+
 def test_weights_steer_the_fit_toward_the_weighted_observations() -> None:
     """Weights enter the objective: up-weighting the short end must pull the
     fitted curve closer to the short-end observations than the unweighted fit."""
@@ -255,6 +278,36 @@ def test_an_unsuccessful_optimizer_result_is_rejected_even_when_the_objective_is
 
     with pytest.raises(FitError, match="did not converge"):
         Svensson.fit((0.25, 1.0, 3.0, 5.0, 10.0, 20.0), (0.02,) * 6, reference_date=REFERENCE)
+
+
+def test_a_successful_optimizer_result_is_accepted_regardless_of_message_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The optimizer verdict is ``result.success``, not scipy's message text:
+    the L-BFGS-B polish step can report a message without the word
+    'successfully' for a genuinely converged fit, and that must not be
+    rejected."""
+    truth = Svensson(beta=(0.03, -0.01, 0.02, -0.005), tau=(1.5, 8.0), reference_date=REFERENCE)
+    times = tuple(np.linspace(0.25, 30.0, 60))
+    zeros = tuple(truth.zero(float(t)) for t in times)
+    x = np.asarray((*truth.beta, *truth.tau), dtype=float)
+
+    def converged_with_foreign_message(*args: object, **kwargs: object) -> OptimizeResult:
+        return OptimizeResult(
+            x=x,
+            fun=0.0,
+            success=True,
+            message="CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH",
+            nit=1,
+        )
+
+    monkeypatch.setattr(parametric_module, "differential_evolution", converged_with_foreign_message)
+
+    result = Svensson.fit(times, zeros, reference_date=REFERENCE)
+
+    assert result.success is True
+    assert result.curve.beta == truth.beta
+    assert result.curve.tau == truth.tau
 
 
 def test_a_fit_that_saturates_a_parameter_bound_is_rejected() -> None:
@@ -302,6 +355,50 @@ def test_fit_result_exposes_explicit_typed_fields(
     assert result.max_abs_error >= 0.0
 
 
+def test_reported_jacobian_condition_is_column_normalized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reported condition number is computed on the column-normalized
+    Jacobian, so the 1e12 rejection threshold is unit-free: the raw Jacobian
+    mixes unitless rate parameters (~1e-2) with tau parameters in years (~1),
+    which alone would inflate the condition number. The Jacobian is rebuilt in
+    this test by hand (central differences over the model) so the pin is on
+    the normalization, not on the fit's own Jacobian routine."""
+    truth = Svensson(beta=(0.03, -0.01, 0.02, -0.005), tau=(1.5, 8.0), reference_date=REFERENCE)
+    times = tuple(np.linspace(0.25, 30.0, 60))
+    zeros = tuple(truth.zero(float(t)) for t in times)
+    x = np.asarray((*truth.beta, *truth.tau), dtype=float)
+
+    def instant_success(*args: object, **kwargs: object) -> OptimizeResult:
+        return OptimizeResult(
+            x=x,
+            fun=0.0,
+            success=True,
+            message="Optimization terminated successfully.",
+            nit=1,
+        )
+
+    monkeypatch.setattr(parametric_module, "differential_evolution", instant_success)
+    result = Svensson.fit(times, zeros, reference_date=REFERENCE)
+
+    t = np.asarray(times, dtype=float)
+    step = 1e-6
+    jac = np.zeros((len(t), len(x)))
+    for j in range(len(x)):
+        plus = x.copy()
+        minus = x.copy()
+        plus[j] += step
+        minus[j] -= step
+        jac[:, j] = (
+            parametric_module._svensson_zeros(t, plus) - parametric_module._svensson_zeros(t, minus)
+        ) / (2.0 * step)
+    column_norms = np.linalg.norm(jac, axis=0)
+    normalized_cond = float(np.linalg.cond(jac / column_norms))
+
+    assert result.jacobian_condition == pytest.approx(normalized_cond, rel=1e-9)
+    assert result.jacobian_condition != pytest.approx(float(np.linalg.cond(jac)), rel=1e-9)
+
+
 def test_reported_residual_metrics_match_an_independent_hand_computation() -> None:
     """QC-11: the reported residual metrics are recomputed by hand from the
     fitted curve on data constructed independently of the implementation (the
@@ -330,6 +427,29 @@ def test_reported_residual_metrics_match_an_independent_hand_computation() -> No
 
     assert result.rmse == pytest.approx(hand_rmse, rel=1e-12)
     assert result.max_abs_error == pytest.approx(hand_max, rel=1e-12)
+
+
+def test_weighted_fit_reports_unweighted_residual_metrics() -> None:
+    """Weights steer the objective but not the reported metrics: rmse and
+    max_abs_error are unweighted errors of the fitted curve against the fit
+    data (every observation weighted equally), recomputed here by hand from the
+    fitted curve. The weighted analogue differs, pinning the semantics."""
+    times = (0.25, 1.0, 3.0, 5.0, 10.0, 20.0)
+    zeros = (0.021, 0.024, 0.027, 0.029, 0.032, 0.034)
+    weights = tuple(10.0 if t >= 10.0 else 1.0 for t in times)
+
+    result = Svensson.fit(times, zeros, reference_date=REFERENCE, weights=weights)
+
+    errors = [result.curve.zero(float(t)) - z for t, z in zip(times, zeros, strict=True)]
+    unweighted_rmse = math.sqrt(sum(e * e for e in errors) / len(errors))
+    unweighted_max = max(abs(e) for e in errors)
+    weighted_rmse = math.sqrt(
+        sum(w * e * e for w, e in zip(weights, errors, strict=True)) / len(errors)
+    )
+
+    assert result.rmse == pytest.approx(unweighted_rmse, rel=1e-12)
+    assert result.max_abs_error == pytest.approx(unweighted_max, rel=1e-12)
+    assert result.rmse != pytest.approx(weighted_rmse, rel=1e-3)
 
 
 # --- allocation-free Nelson-Siegel evaluation (CORE-09) ----------------------
