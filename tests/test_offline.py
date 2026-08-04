@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Generator
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 import yieldcurve.market as _market
+from tests.conftest import SNAPSHOT_DATE as ASOF
 from yieldcurve.curves.protocol import CurveSet
 from yieldcurve.market.snapshot import Snapshot
-
-ASOF = date(2026, 7, 24)
 
 
 @pytest.fixture(autouse=True)

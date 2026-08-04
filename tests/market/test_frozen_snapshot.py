@@ -15,7 +15,6 @@ from __future__ import annotations
 import importlib.util
 import subprocess
 import sys
-from datetime import date
 
 import pandas as pd
 
@@ -56,10 +55,11 @@ def test_importing_the_market_package_opens_no_socket() -> None:
     assert result.stdout.strip() == "ok"
 
 
-def test_every_dataset_records_provenance_in_the_manifest() -> None:
+def test_every_dataset_records_provenance_in_the_manifest(
+    snapshot: Snapshot,
+) -> None:
     """Section 6 contract: source, transformation, licence, classification, and
     observation/retrieval dates are recorded for every packaged dataset."""
-    snapshot = Snapshot(date=date(2026, 7, 24))
     datasets = snapshot.manifest["datasets"]
 
     assert set(datasets) == set(snapshot.available())
@@ -76,7 +76,7 @@ def test_history_dataset_is_committed_and_wide_enough_for_pca(
     assert list(history.columns) == ["date", "tenor_years", "rate"]
     dates = pd.to_datetime(history["date"])
     assert dates.nunique() >= 750
-    assert dates.max().date() <= date(2026, 7, 24)
+    assert dates.max().date() <= snapshot.date
     assert set(history["tenor_years"].unique()) >= {0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0}
     assert history["rate"].abs().max() < 0.25
 
