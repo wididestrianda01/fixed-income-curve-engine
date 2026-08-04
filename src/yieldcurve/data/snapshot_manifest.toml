@@ -55,7 +55,7 @@ retrieval_date = "2026-07-24"
 publisher = "Swedish National Debt Office (Riksgalden)"
 primary_url = "https://www.riksgalden.se/en/statistics/statistics-regarding-government-securities/"
 classification = "public"
-licence = "Swedish government publications are public domain under Swedish law; attribution to Riksgalden requested"
+licence = "No explicit reuse licence published by Riksgalden (unverified 2026-08-05); official Swedish government statistics treated as public with attribution"
 transformation = "Coupons stored as decimals; outstanding nominal as published (SEK)"
 columns = ["isin", "coupon", "issue_date", "maturity_date", "outstanding_nominal"]
 units = { isin = "ISIN identifier", coupon = "decimal coupon rate (0.01 = 1%)", issue_date = "ISO 8601 date", maturity_date = "ISO 8601 date", outstanding_nominal = "outstanding nominal in SEK" }
@@ -69,7 +69,7 @@ publisher = "Federal Reserve Bank of St. Louis (FRED); underlying data U.S. Trea
 primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 classification = "public"
 licence = "U.S. Treasury CMT rates are public domain (citation requested); FRED terms restrict archiving and commercial use of FRED content"
-transformation = "Percentage yields divided by 100 to decimals; month tenor as fractional years (1M = 0.0833)"
+transformation = "Percentage CMT par yields divided by 100 to decimals; month tenor as fractional years (1M = 0.0833); any curve built from these inputs is a CMT-implied approximation"
 columns = ["series_id", "tenor_years", "rate"]
 units = { series_id = "FRED series identifier (DGS1M..DGS30)", tenor_years = "tenor in years", rate = "decimal yield (0.038 = 3.8%)" }
 limitations = "Frozen 2026-07-24; FRED redistribution terms apply to the retrieval service, not the underlying public-domain data"
@@ -82,7 +82,7 @@ publisher = "Federal Reserve Bank of St. Louis (FRED); underlying data U.S. Trea
 primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 classification = "public"
 licence = "U.S. Treasury CMT rates are public domain (citation requested); FRED terms restrict archiving and commercial use of FRED content"
-transformation = "Percentage yields divided by 100 to decimals; daily observations long-form over date x tenor"
+transformation = "Percentage CMT par yields divided by 100 to decimals; daily observations long-form over date x tenor"
 columns = ["date", "tenor_years", "rate"]
 units = { date = "ISO 8601 observation date", tenor_years = "tenor in years", rate = "decimal yield" }
 limitations = "Frozen 2026-07-24; five years of daily history ending 2026-07-24"
@@ -98,20 +98,20 @@ licence = "Constructed from public-domain U.S. Treasury data plus a cited indica
 transformation = "par_rate = treasury_cmt_rate + ois_tsy_spread; spread from Bloomberg generic USSW vs USGG, 2026-07-24 close, approximate +/- 2bp"
 columns = ["tenor_years", "par_rate"]
 units = { tenor_years = "tenor in years", par_rate = "decimal par rate (0.0412 = 4.12%)" }
-limitations = "Approximate constructed series (+/- 2bp), not a tradable mark; see DATA_SOURCES.md for the construction record"
+limitations = "Approximate constructed series (+/- 2bp), not observed live quotes and not a tradable mark; see DATA_SOURCES.md for the construction record"
 sha256 = "4dde78cb330438c0b9a49233172df505de00278fe8fc85f58126a4352a2edf41"
 
 [datasets.usd_forecast_basis]
 observation_date = "2026-07-24"
 retrieval_date = "2026-07-24"
 publisher = "Constructed in this repository"
-primary_url = "https://www.cmegroup.com/market-data/files/information-license-agreement.pdf"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
 classification = "constructed"
-licence = "Indicative inter-dealer mark; Term SOFR itself is CME proprietary and not redistributed"
+licence = "Constructed in this repository from an indicative inter-dealer mark; no third-party data redistributed"
 transformation = "3M Term SOFR minus SOFR OIS basis in basis points; from Bloomberg S490 indicative mid-market, 2026-07-24, rounded to 0.5bp"
 columns = ["tenor_years", "basis_bp"]
 units = { tenor_years = "tenor in years", basis_bp = "basis spread in basis points" }
-limitations = "Representative, not live tradable marks; exact basis is quoted inter-dealer and varies intraday"
+limitations = "Constructed, not observed live quotes; representative, not live tradable marks; exact basis is quoted inter-dealer and varies intraday"
 sha256 = "dcd8036a0d69e046dee4ae278177edecfa753f98d59c5dcabec0ec3cdd8d7c01"
 
 [datasets.ecb_spot_curve]
@@ -121,7 +121,7 @@ publisher = "European Central Bank"
 primary_url = "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>"
 classification = "public"
 licence = "ESCB statistics reusable free of charge with source quoted and statistics unmodified"
-transformation = "As published; continuously compounded zero-coupon rates per the ECB technical notes; no conversion (already decimals in source units)"
+transformation = "Published percentage zero rates divided by 100 to decimals; continuously compounded per the ECB technical notes"
 columns = ["tenor_years", "zero_rate"]
 units = { tenor_years = "tenor in years", zero_rate = "decimal continuously compounded zero rate (0.0264139995 = 2.64139995%)" }
 limitations = "Frozen 2026-07-24; no sub-1Y tenors are published as separate spot-rate series"
@@ -144,11 +144,11 @@ sha256 = "3c4645bc9f4f0cb2ae0952c988d3a976b1a8dee49e665ac130c9b3eac40e835a"
 observation_date = "2026-07-24"
 retrieval_date = "2026-07-24"
 publisher = "Constructed in this repository"
-primary_url = "https://www.cmegroup.com/market-data/files/information-license-agreement.pdf"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
 classification = "illustrative"
 licence = "Constructed, not observed market data; no redistribution restrictions"
 transformation = "sigma_bp(e, m) = (60.0 + 22.0 * e * exp(1 - e / 1.5)) * exp(-0.018 * m); expiries 0.5..10 years, swap tenors 1..10 years"
 columns = ["expiry", "maturity", "vol"]
 units = { expiry = "ISO 8601 option expiry date", maturity = "ISO 8601 swap maturity date", vol = "normal volatility in basis points" }
-limitations = "Illustrative only: not market data and not a fit to any traded price; replaces the license-restricted CME grid"
-sha256 = "a8f91cc75e275296f3137d0ce6b22a001ef57a165fe711c45e079b16c4957a64"
+limitations = "Illustrative only: not market data, not observed live quotes and not a fit to any traded price"
+sha256 = "be7c999ae5b0d7bf7a2eb7a1f1c1deb463a38758ca435b70ab0e0f68da8eaf1c"

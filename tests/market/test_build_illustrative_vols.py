@@ -1,0 +1,111 @@
+"""The illustrative vol generator is deterministic, manifest-dated, packaged.
+
+MKT-16: generation must be reproducible (same inputs -> identical bytes) and
+date-explicit (the as-of comes from the packaged manifest, not a hardcoded
+constant). MKT-13: regeneration targets the packaged resource location, and
+optional external roots are written through the Snapshot ``save`` contract.
+
+The construction is a closed form with no RNG, so determinism here means
+byte-for-byte reproducibility of the CSV, including the provenance preamble.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from datetime import date, timedelta
+from importlib import resources
+from pathlib import Path
+
+import pandas as pd
+
+from scripts.build_illustrative_vols import (
+    generate_grid,
+    main,
+    packaged_csv_bytes,
+    snapshot_asof,
+)
+from yieldcurve.market.snapshot import Snapshot
+
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "build_illustrative_vols.py"
+
+
+def test_generation_is_deterministic() -> None:
+    """Running the generator twice yields identical frames and identical bytes."""
+    asof = snapshot_asof()
+    first = generate_grid(asof)
+    second = generate_grid(asof)
+
+    pd.testing.assert_frame_equal(first, second)
+    assert first.to_csv(index=False) == second.to_csv(index=False)
+
+
+def test_default_asof_comes_from_the_packaged_manifest() -> None:
+    """The generator's as-of is the packaged manifest snapshot date."""
+    manifest = resources.files("yieldcurve.data").joinpath("snapshot_manifest.toml")
+    import tomllib
+
+    with manifest.open("rb") as handle:
+        expected = date.fromisoformat(tomllib.load(handle)["snapshot_date"])
+
+    assert snapshot_asof() == expected
+
+    # The generated expiry dates are anchored on that as-of (182 days = 0.5y
+    # under the documented 365.25-day rule), not on any other date.
+    frame = generate_grid(expected)
+    first_expiry = date.fromisoformat(frame["expiry"].iloc[0])
+    assert first_expiry == expected + timedelta(days=int(0.5 * 365.25))
+
+
+def test_packaged_csv_is_byte_identical_to_generator_output() -> None:
+    """The committed packaged CSV is exactly what the generator writes, so the
+    two cannot drift apart (the manifest sha256 guards the bytes)."""
+    expected = packaged_csv_bytes(snapshot_asof())
+    actual = resources.files("yieldcurve.data").joinpath("illustrative_swaption_vols.csv")
+
+    assert actual.read_bytes() == expected
+
+
+def test_generated_grid_has_no_stale_cme_language() -> None:
+    """The provenance preamble no longer carries the stale CME narrative."""
+    preamble = packaged_csv_bytes(snapshot_asof()).split(b"\n", 1)[0]
+    assert b"CME" not in preamble
+    assert b"License Agreement" not in preamble
+
+
+def test_help_exits_zero_and_prints_usage() -> None:
+    """`python scripts/build_illustrative_vols.py --help` works (Verify gate)."""
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "usage" in result.stdout
+    assert "--root" in result.stdout
+
+
+def test_external_root_write_uses_the_snapshot_contract(tmp_path: Path) -> None:
+    """With --root, the grid is written through Snapshot.save and loads back
+    through Snapshot.load at the same date."""
+    asof = snapshot_asof()
+    assert main(["--root", str(tmp_path)]) == 0
+
+    snapshot = Snapshot(date=asof, root=tmp_path)
+    written = tmp_path / asof.isoformat() / "illustrative_swaption_vols.csv"
+    assert written.is_file()
+    pd.testing.assert_frame_equal(snapshot.load("illustrative_swaption_vols"), generate_grid(asof))
+
+
+def test_cli_is_reproducible_across_runs(tmp_path: Path) -> None:
+    """Two runs produce byte-identical external snapshot files."""
+    root_a = tmp_path / "a"
+    root_b = tmp_path / "b"
+    main(["--root", str(root_a)])
+    main(["--root", str(root_b)])
+
+    file_a = root_a / snapshot_asof().isoformat() / "illustrative_swaption_vols.csv"
+    file_b = root_b / snapshot_asof().isoformat() / "illustrative_swaption_vols.csv"
+    assert file_a.read_bytes() == file_b.read_bytes()

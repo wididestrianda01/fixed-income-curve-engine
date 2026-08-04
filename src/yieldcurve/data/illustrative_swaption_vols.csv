@@ -1,11 +1,12 @@
 # ILLUSTRATIVE, NOT MARKET DATA. These normal volatilities are constructed, not
-# observed. Real CME cleared-swaption settlement vols require a CME Information
-# License Agreement and may not be redistributed in this repository.
+# observed; they are not a fit to any traded price.
+# Snapshot as-of: 2026-07-24 (from src/yieldcurve/data/snapshot_manifest.toml).
 # Construction rule, exactly as implemented in scripts/build_illustrative_vols.py:
 #   sigma_bp(e, m) = (60.0 + 22.0 * e * exp(1 - e / 1.5)) * exp(-0.018 * m)
 #   e = option expiry in years, m = underlying swap tenor in years.
-# Shape is market-plausible: declining in expiry beyond the hump, humped around 1-2y,
-# mild decay across swap tenor. It is not a fit to any traded price.
+# Expiry/maturity dates are asof + floor(years * 365.25) days.
+# Shape is market-plausible: declining in expiry beyond a 1-2y hump, mild decay
+# across swap tenor. Fully deterministic: regeneration is byte-identical.
 expiry,maturity,vol
 2027-01-22,2028-01-22,79.9725
 2027-01-22,2029-01-22,78.5459

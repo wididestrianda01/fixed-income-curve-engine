@@ -199,3 +199,50 @@ def test_every_dataset_is_classified_public_constructed_or_illustrative(
     for name, block in manifest["datasets"].items():
         assert block["classification"] in {"public", "constructed", "illustrative"}
         assert block["classification"] == EXPECTED_CLASSIFICATION[name]
+
+
+# --- Label assertions (MKT-04, MKT-12: constructed/CMT wording) ------------
+
+
+def test_fred_datasets_describe_treasury_inputs_as_cmt_par_yields(
+    snapshot: Snapshot,
+) -> None:
+    """Treasury inputs are labelled CMT par yields, and any curve built from
+    them is a CMT-implied approximation rather than an official bootstrap."""
+    for name in ("fred_treasury_cmt", "fred_treasury_cmt_history"):
+        block = snapshot.manifest["datasets"][name]
+        assert "CMT par yield" in block["transformation"], name
+
+
+def test_usd_constructed_datasets_disclose_they_are_not_observed_quotes(
+    snapshot: Snapshot,
+) -> None:
+    """The USD OIS grid and forecast basis are constructed inputs, never
+    presented as observed live quotes."""
+    for name in ("usd_ois_swaps", "usd_forecast_basis"):
+        block = snapshot.manifest["datasets"][name]
+        assert block["classification"] == "constructed"
+        assert "not observed" in block["limitations"], name
+        assert "constructed" in block["licence"].lower(), name
+
+
+def test_illustrative_vol_grid_is_labelled_constructed_not_observed(
+    snapshot: Snapshot,
+) -> None:
+    block = snapshot.manifest["datasets"]["illustrative_swaption_vols"]
+
+    assert block["classification"] == "illustrative"
+    assert "not observed" in block["limitations"]
+    assert "not market data" in block["limitations"]
+
+
+def test_manifest_has_no_stale_cme_redistribution_language(snapshot: Snapshot) -> None:
+    """The stale CME redistribution narrative was removed from the manifest
+    along with the deleted cme.py module (HYGIENE-06)."""
+    from importlib import resources
+
+    resource = resources.files("yieldcurve.data").joinpath("snapshot_manifest.toml")
+    with resource.open("rb") as handle:
+        raw = handle.read().decode("utf-8")
+
+    assert "CME" not in raw
