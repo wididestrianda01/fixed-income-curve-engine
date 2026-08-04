@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Generator
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import yieldcurve.market as _market
 from yieldcurve.curves.protocol import CurveSet
 from yieldcurve.market.snapshot import Snapshot
 
@@ -16,9 +19,29 @@ ASOF = date(2026, 7, 24)
 
 @pytest.fixture(autouse=True)
 def _block_network() -> Generator[None, None, None]:
-    """Fail any HTTP request made during the test."""
-    with patch("requests.Session.request", side_effect=RuntimeError("network call blocked")):
+    """Fail any socket connection attempted during the test."""
+    with patch("socket.socket", side_effect=RuntimeError("network call blocked")):
         yield
+
+
+def test_no_market_module_imports_requests_or_socket_at_module_scope() -> None:
+    """The offline guarantee is structural: no module in ``yieldcurve.market``
+    may import ``requests`` or ``socket`` at module scope, so the package has
+    no network path to reach before any test fixture blocks it."""
+    market_dir = Path(_market.__file__).resolve().parent
+    forbidden = {"requests", "socket"}
+    offenders: list[str] = []
+    for path in sorted(market_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            names = {alias.name.split(".")[0] for alias in node.names}
+            if isinstance(node, ast.ImportFrom) and node.module:
+                names.add(node.module.split(".")[0])
+            if names & forbidden:
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders
 
 
 def test_load_snapshot_without_network() -> None:

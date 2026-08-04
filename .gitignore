@@ -14,8 +14,8 @@ graphify-out/
 data/raw/
 data/processed/
 data/cache/
-# Regenerated refresh output, pre-Task-11: yieldcurve.market.refresh still
-# writes here via DEFAULT_SNAPSHOT_ROOT and must not be committable.
+# Legacy checkout snapshot root from before the refresh CLI was removed;
+# the frozen snapshot is packaged under src/yieldcurve/data/.
 data/snapshots/
 *.parquet
 

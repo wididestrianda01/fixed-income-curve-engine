@@ -1,11 +1,10 @@
 """Generate the illustrative ATM swaption normal-vol grid.
 
 These volatilities are CONSTRUCTED, not observed. CME cleared-swaption settlement files
-require a CME Information License Agreement and may not be redistributed, which is why
-src/yieldcurve/market/cme.py raises rather than caches. The grid below has a
-market-plausible shape — declining in expiry, humped around 1-2y, mildly decaying across
-swap tenor — produced by a closed form that is stated in full so that anyone can reproduce
-or replace it.
+require a CME Information License Agreement and may not be redistributed in this
+repository. The grid below has a market-plausible shape — declining in expiry, humped
+around 1-2y, mildly decaying across swap tenor — produced by a closed form that is
+stated in full so that anyone can reproduce or replace it.
 
     sigma(e, m) = (base + hump * e * exp(1 - e / peak)) * exp(-decay * m)
 

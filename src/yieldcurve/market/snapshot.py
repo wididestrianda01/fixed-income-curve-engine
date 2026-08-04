@@ -25,11 +25,6 @@ from typing import Any, NoReturn
 
 import pandas as pd
 
-# Legacy checkout path consumed only by ``yieldcurve.market.refresh``, which the
-# remediation removes in a later task. The packaged snapshot never falls back to
-# this path and the default snapshot never writes here.
-DEFAULT_SNAPSHOT_ROOT = Path(__file__).resolve().parents[3] / "data" / "snapshots"
-
 _PACKAGE = "yieldcurve.data"
 _MANIFEST_NAME = "snapshot_manifest.toml"
 _DATASET_NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
