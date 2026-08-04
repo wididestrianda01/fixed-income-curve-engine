@@ -5,14 +5,14 @@ from datetime import date
 import pytest
 
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
-from yieldcurve.market.snapshot import DEFAULT_SNAPSHOT_ROOT, Snapshot
+from yieldcurve.market.snapshot import Snapshot
 
 SNAPSHOT_DATE = date(2026, 7, 24)
 
 
 @pytest.fixture(scope="session")
 def snapshot() -> Snapshot:
-    return Snapshot(date=SNAPSHOT_DATE, root=DEFAULT_SNAPSHOT_ROOT)
+    return Snapshot(date=SNAPSHOT_DATE)
 
 
 @pytest.fixture

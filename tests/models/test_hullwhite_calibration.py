@@ -167,7 +167,7 @@ def test_a_fit_with_high_start_sensitivity_is_rejected() -> None:
 
 
 @pytest.mark.skipif(
-    not Snapshot(date=ASOF).directory.joinpath("cme_swaption_vols.csv").exists(),
+    "cme_swaption_vols" not in Snapshot(date=ASOF).available(),
     reason="cme_swaption_vols not in the committed snapshot",
 )
 def test_calibration_to_the_market_grid_fits_within_ten_vol_basis_points(

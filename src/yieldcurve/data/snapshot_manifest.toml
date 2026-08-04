@@ -1,0 +1,154 @@
+# Frozen market-data snapshot manifest.
+#
+# The CSVs in this directory are the ONE audited snapshot, dated 2026-07-24.
+# DATA_SOURCES.md carries the human-readable provenance; this file carries the
+# machine-checked contract: observation/retrieval dates, publisher, primary
+# URL, raw field meaning and units, transformation formula, licence status,
+# public/constructed/illustrative classification, known limitations, and a
+# sha256 checksum per dataset. Tests verify the manifest against the packaged
+# CSV bytes, so a dataset and its provenance cannot drift apart silently.
+snapshot_date = "2026-07-24"
+description = "Frozen market-data snapshot: SEK government curve inputs, USD OIS and forecast curve inputs, ECB euro-area spot curve and Svensson parameters, FRED Treasury CMT history, and an illustrative ATM swaption volatility grid."
+
+[datasets.riksbank_bills]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Sveriges Riksbank"
+primary_url = "https://api.riksbank.se/swea/v1/Observations/<seriesId>/<from>/<to>"
+classification = "public"
+licence = "Riksbank open data: free reuse with attribution ('Enter source, Sveriges Riksbank and date')"
+transformation = "Percentage quotes divided by 100 to decimals; maturity dates are the quoted series observation dates"
+columns = ["tenor", "maturity_date", "rate"]
+units = { tenor = "tenor label (1M, 3M, 6M)", maturity_date = "ISO 8601 date", rate = "decimal yield (0.01933 = 1.933%)" }
+limitations = "Frozen 2026-07-24; the 12M bill series was discontinued in 2010 and is absent"
+sha256 = "9659dc1673062e03b224c97d70103b631ede192a38612de05b9d15b4bc686c2f"
+
+[datasets.riksbank_gov_benchmarks]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Sveriges Riksbank"
+primary_url = "https://api.riksbank.se/swea/v1/Observations/<seriesId>/<from>/<to>"
+classification = "public"
+licence = "Riksbank open data: free reuse with attribution ('Enter source, Sveriges Riksbank and date')"
+transformation = "Percentage quotes divided by 100 to decimals; maturity dates are the quoted series observation dates"
+columns = ["tenor", "maturity_date", "yield"]
+units = { tenor = "tenor label (2Y, 5Y, 7Y, 10Y)", maturity_date = "ISO 8601 date", yield = "decimal yield (0.02478 = 2.478%)" }
+limitations = "Frozen 2026-07-24; only 2Y/5Y/7Y/10Y tenors are published, 1Y/15Y/20Y/30Y are absent from the API"
+sha256 = "50285f7a6d860e46ba63b314ca72189dce36bd179d07956ac64a3b294ea12899"
+
+[datasets.riksbank_swestr]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Sveriges Riksbank"
+primary_url = "https://api.riksbank.se/swestr/"
+classification = "public"
+licence = "SWESTR free of charge for use and re-publication with attribution to Sveriges Riksbank"
+transformation = "Percentage rates divided by 100 to decimals; ON value day 2026-07-23 published 2026-07-24"
+columns = ["tenor", "rate"]
+units = { tenor = "tenor label (ON, 1W, 1M, 2M, 3M, 6M)", rate = "decimal rate (0.0164 = 1.64%)" }
+limitations = "Frozen 2026-07-24; unauthenticated public access is rate-limited"
+sha256 = "45c2a52e7fdcbe4d26df04b5a6708f2a48e0dfe60aea6095ca6b52ee0e734ea3"
+
+[datasets.riksgalden_gov_bonds]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Swedish National Debt Office (Riksgalden)"
+primary_url = "https://www.riksgalden.se/en/statistics/statistics-regarding-government-securities/"
+classification = "public"
+licence = "Swedish government publications are public domain under Swedish law; attribution to Riksgalden requested"
+transformation = "Coupons stored as decimals; outstanding nominal as published (SEK)"
+columns = ["isin", "coupon", "issue_date", "maturity_date", "outstanding_nominal"]
+units = { isin = "ISIN identifier", coupon = "decimal coupon rate (0.01 = 1%)", issue_date = "ISO 8601 date", maturity_date = "ISO 8601 date", outstanding_nominal = "outstanding nominal in SEK" }
+limitations = "Frozen 2026-07-24; outstanding nominal from the September 2025 Central Government Debt report (latest available at freeze)"
+sha256 = "b16bc16259d215c06181f8d11f462f1236d99e8c5452ca32427c35b983a0ddb6"
+
+[datasets.fred_treasury_cmt]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Federal Reserve Bank of St. Louis (FRED); underlying data U.S. Treasury"
+primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+classification = "public"
+licence = "U.S. Treasury CMT rates are public domain (citation requested); FRED terms restrict archiving and commercial use of FRED content"
+transformation = "Percentage yields divided by 100 to decimals; month tenor as fractional years (1M = 0.0833)"
+columns = ["series_id", "tenor_years", "rate"]
+units = { series_id = "FRED series identifier (DGS1M..DGS30)", tenor_years = "tenor in years", rate = "decimal yield (0.038 = 3.8%)" }
+limitations = "Frozen 2026-07-24; FRED redistribution terms apply to the retrieval service, not the underlying public-domain data"
+sha256 = "d3552b694245f5dc350308a5aca81320122fb91d3c7ae4a34b3aa7b7b0204371"
+
+[datasets.fred_treasury_cmt_history]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Federal Reserve Bank of St. Louis (FRED); underlying data U.S. Treasury"
+primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+classification = "public"
+licence = "U.S. Treasury CMT rates are public domain (citation requested); FRED terms restrict archiving and commercial use of FRED content"
+transformation = "Percentage yields divided by 100 to decimals; daily observations long-form over date x tenor"
+columns = ["date", "tenor_years", "rate"]
+units = { date = "ISO 8601 observation date", tenor_years = "tenor in years", rate = "decimal yield" }
+limitations = "Frozen 2026-07-24; five years of daily history ending 2026-07-24"
+sha256 = "898c7958f4497339b2938f63af91a999b66243a79b185f7f14160a18fda97d7e"
+
+[datasets.usd_ois_swaps]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+classification = "constructed"
+licence = "Constructed from public-domain U.S. Treasury data plus a cited indicative spread; not a licensed market-data feed"
+transformation = "par_rate = treasury_cmt_rate + ois_tsy_spread; spread from Bloomberg generic USSW vs USGG, 2026-07-24 close, approximate +/- 2bp"
+columns = ["tenor_years", "par_rate"]
+units = { tenor_years = "tenor in years", par_rate = "decimal par rate (0.0412 = 4.12%)" }
+limitations = "Approximate constructed series (+/- 2bp), not a tradable mark; see DATA_SOURCES.md for the construction record"
+sha256 = "4dde78cb330438c0b9a49233172df505de00278fe8fc85f58126a4352a2edf41"
+
+[datasets.usd_forecast_basis]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://www.cmegroup.com/market-data/files/information-license-agreement.pdf"
+classification = "constructed"
+licence = "Indicative inter-dealer mark; Term SOFR itself is CME proprietary and not redistributed"
+transformation = "3M Term SOFR minus SOFR OIS basis in basis points; from Bloomberg S490 indicative mid-market, 2026-07-24, rounded to 0.5bp"
+columns = ["tenor_years", "basis_bp"]
+units = { tenor_years = "tenor in years", basis_bp = "basis spread in basis points" }
+limitations = "Representative, not live tradable marks; exact basis is quoted inter-dealer and varies intraday"
+sha256 = "dcd8036a0d69e046dee4ae278177edecfa753f98d59c5dcabec0ec3cdd8d7c01"
+
+[datasets.ecb_spot_curve]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "European Central Bank"
+primary_url = "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>"
+classification = "public"
+licence = "ESCB statistics reusable free of charge with source quoted and statistics unmodified"
+transformation = "As published; continuously compounded zero-coupon rates per the ECB technical notes; no conversion (already decimals in source units)"
+columns = ["tenor_years", "zero_rate"]
+units = { tenor_years = "tenor in years", zero_rate = "decimal continuously compounded zero rate (0.0264139995 = 2.64139995%)" }
+limitations = "Frozen 2026-07-24; no sub-1Y tenors are published as separate spot-rate series"
+sha256 = "5baddb2b7d2d7b8966aa25c7f3ea0b27bbbb80c31dd2f36b88a29b34df2bd456"
+
+[datasets.ecb_svensson_parameters]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "European Central Bank"
+primary_url = "https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>"
+classification = "public"
+licence = "ESCB statistics reusable free of charge with source quoted and statistics unmodified"
+transformation = "Stored as published: BETA parameters in percent (divided by 100 downstream), TAU in years; %.10g formatting"
+columns = ["parameter", "value"]
+units = { parameter = "Svensson parameter name (BETA0..BETA3, TAU1, TAU2)", value = "BETA in percent, TAU in years" }
+limitations = "Frozen 2026-07-24; betas are stored in percent and must be divided by 100 before the Svensson formula"
+sha256 = "3c4645bc9f4f0cb2ae0952c988d3a976b1a8dee49e665ac130c9b3eac40e835a"
+
+[datasets.illustrative_swaption_vols]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://www.cmegroup.com/market-data/files/information-license-agreement.pdf"
+classification = "illustrative"
+licence = "Constructed, not observed market data; no redistribution restrictions"
+transformation = "sigma_bp(e, m) = (60.0 + 22.0 * e * exp(1 - e / 1.5)) * exp(-0.018 * m); expiries 0.5..10 years, swap tenors 1..10 years"
+columns = ["expiry", "maturity", "vol"]
+units = { expiry = "ISO 8601 option expiry date", maturity = "ISO 8601 swap maturity date", vol = "normal volatility in basis points" }
+limitations = "Illustrative only: not market data and not a fit to any traded price; replaces the license-restricted CME grid"
+sha256 = "a8f91cc75e275296f3137d0ce6b22a001ef57a165fe711c45e079b16c4957a64"

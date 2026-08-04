@@ -8,8 +8,9 @@ graphify-out/
 **/graphify-out/
 
 # --- Data ---
-# data/snapshots/ IS committed on purpose: small, public, dated market data
-# that makes the repo runnable offline. Everything else stays local.
+# The frozen snapshot is packaged under src/yieldcurve/data/ and ships in the
+# wheel (small, public, dated market data that makes the repo runnable offline).
+# Everything else stays local.
 data/raw/
 data/processed/
 data/cache/

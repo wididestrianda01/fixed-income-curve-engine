@@ -26,6 +26,28 @@ def test_load_snapshot_without_network() -> None:
     assert snapshot.available()  # type: ignore[arg-type]
 
 
+def test_default_snapshot_loads_every_dataset_without_network() -> None:
+    """Every packaged dataset is readable through the default snapshot offline."""
+    snapshot = Snapshot(date=ASOF)
+
+    for name in snapshot.available():
+        assert not snapshot.load(name).empty
+
+
+def test_default_snapshot_never_opens_a_socket() -> None:
+    """Loading the packaged snapshot performs no network calls at socket level."""
+    with patch("socket.socket", side_effect=RuntimeError("socket blocked")):
+        snapshot = Snapshot(date=ASOF)
+        for name in snapshot.available():
+            snapshot.load(name)
+
+        from yieldcurve.curves.build import usd_curveset
+
+        curves = usd_curveset(snapshot, ASOF)
+        assert curves.discount.zero(5.0) > 0.0
+        assert curves.forecast_for("3M").zero(5.0) > 0.0
+
+
 def test_sek_curve_without_network() -> None:
     from yieldcurve.curves.build import sek_government_curve
 

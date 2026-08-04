@@ -1,5 +1,5 @@
 # A stylised Swedish banking book. Every bond is a real Riksgälden benchmark taken from
-# data/snapshots/2026-07-24/riksgalden_gov_bonds.csv — real ISIN, real coupon, real
+# src/yieldcurve/data/riksgalden_gov_bonds.csv — real ISIN, real coupon, real
 # maturity. The notionals are invented: they are chosen so the six EU 2024/856
 # supervisory shock scenarios (see src/yieldcurve/risk/scenarios.toml) produce visibly
 # different illustrative Delta EVE, which is the point of the exhibit. This is not
