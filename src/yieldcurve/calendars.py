@@ -4,10 +4,9 @@ Written by hand rather than imported. QuantLib is this project's parity oracle
 and appears in ``tests/`` only; the calendars here are verified against it over
 2020-2036 in ``tests/test_calendars.py``.
 
-Known QuantLib 1.43 discrepancies (our implementation follows SIFMA):
-  Good Friday is a SIFMA-recommended market holiday for US government bonds, but
-  QuantLib 1.43's UnitedStates.GovernmentBond omits Good Friday for years 2021,
-  2023, 2026 and 2034. All other years match.
+Known QuantLib 1.43 discrepancies are isolated in tests. Current SIFMA
+guidance treats Good Friday 2026 as an early close rather than a full closure;
+this date-only calendar therefore keeps it as a business day.
 """
 
 from __future__ import annotations
@@ -59,9 +58,8 @@ def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
 class SwedenCalendar:
     """Swedish bank and market holidays.
 
-    Whit Monday ceased to be a holiday in 2005; Midsummer Eve, Christmas Eve and
-    New Year's Eve are not statutory public holidays but the market is closed, so
-    they are treated as holidays here.
+    Midsummer Eve, Christmas Eve and New Year's Eve are not statutory public
+    holidays but the market is closed, so they are treated as holidays here.
     """
 
     name = "Sweden"
@@ -153,12 +151,15 @@ def _us_bond_holidays(year: int) -> frozenset[date]:
             observed.add(d - timedelta(days=1))
         else:
             observed.add(d)
+    full_day_good_friday: set[date] = set()
+    if year != 2026:
+        full_day_good_friday.add(easter - timedelta(days=2))
     return frozenset(
         observed
+        | full_day_good_friday
         | {
             _nth_weekday(year, 1, 0, 3),  # Martin Luther King Jr Day
             _nth_weekday(year, 2, 0, 3),  # Washington's Birthday
-            easter - timedelta(days=2),  # Good Friday
             _nth_weekday(year, 5, 0, -1),  # Memorial Day
             _nth_weekday(year, 9, 0, 1),  # Labor Day
             _nth_weekday(year, 10, 0, 2),  # Columbus Day

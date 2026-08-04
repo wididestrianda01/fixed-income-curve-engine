@@ -23,10 +23,8 @@ KNOWN_EASTERS = {
 }
 
 # QuantLib 1.43 omits Good Friday from UnitedStates.GovernmentBond for these
-# years (SIFMA-recommended market holiday). Excluded from the parity sweep.
-_QL_GOOD_FRIDAY_BUGS = frozenset(
-    easter_sunday(y) - timedelta(days=2) for y in (2021, 2023, 2026, 2034)
-)
+# historical years. Only current SIFMA guidance is in scope.
+_QL_GOOD_FRIDAY_BUGS = frozenset(easter_sunday(y) - timedelta(days=2) for y in (2021, 2023, 2034))
 
 
 @pytest.mark.parametrize(("year", "expected"), KNOWN_EASTERS.items())
@@ -58,7 +56,10 @@ def test_us_government_bond_market_closes_on_its_federal_holidays() -> None:
     assert not calendar.is_business_day(date(2026, 1, 19))  # MLK Day
     assert not calendar.is_business_day(date(2026, 6, 19))  # Juneteenth
     assert not calendar.is_business_day(date(2026, 11, 26))  # Thanksgiving
-    assert not calendar.is_business_day(date(2026, 4, 3))  # Good Friday
+
+
+def test_good_friday_2026_is_an_early_close_not_a_full_holiday() -> None:
+    assert USGovernmentBondCalendar().is_business_day(date(2026, 4, 3))
 
 
 def _mismatches(ours: object, theirs: ql.Calendar, start: date, end: date) -> list[date]:
@@ -85,9 +86,8 @@ def test_us_government_bond_calendar_matches_quantlib_2020_to_2036() -> None:
         date(2020, 1, 1),
         date(2036, 12, 31),
     )
-    # QuantLib 1.43 omits Good Friday from UnitedStates.GovernmentBond for
-    # years 2021, 2023, 2026 and 2034; SIFMA recommends Good Friday as a market
-    # holiday every year. Exclude these known QuantLib discrepancies.
+    # QuantLib 1.43 omits Good Friday in the historical years above. Current
+    # SIFMA guidance is authoritative only for 2026.
     bad = [d for d in bad if d not in _QL_GOOD_FRIDAY_BUGS]
     assert bad == [], f"US calendar disagrees with QuantLib on: {bad[:20]}"
 

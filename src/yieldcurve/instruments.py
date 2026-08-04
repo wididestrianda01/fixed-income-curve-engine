@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from itertools import pairwise
 
 from yieldcurve.calendars import Calendar
 from yieldcurve.conventions import (
     BusinessDayConvention,
     DayCount,
-    schedule,
+    SchedulePeriod,
+    schedule_periods,
     year_fraction,
 )
 
@@ -42,6 +42,21 @@ class CashFlow:
 
     date: date
     amount: float
+
+
+def _payment_dates(periods: tuple[SchedulePeriod, ...]) -> tuple[date, ...]:
+    return (periods[0].accrual_start, *(period.payment_date for period in periods))
+
+
+def _period_year_fraction(period: SchedulePeriod, day_count: DayCount, frequency: int) -> float:
+    return year_fraction(
+        period.accrual_start,
+        period.accrual_end,
+        day_count,
+        period_start=period.reference_start,
+        period_end=period.reference_end,
+        frequency=frequency,
+    )
 
 
 @dataclass(frozen=True)
@@ -71,37 +86,55 @@ class FixedCouponBond:
     bdc: BusinessDayConvention
     face: float = 100.0
 
+    def coupon_periods(self) -> tuple[SchedulePeriod, ...]:
+        return schedule_periods(self.issue, self.maturity, self.frequency, self.calendar, self.bdc)
+
     def coupon_dates(self) -> tuple[date, ...]:
-        return schedule(self.issue, self.maturity, self.frequency, self.calendar, self.bdc)
+        return _payment_dates(self.coupon_periods())
 
     def cashflows(self, asof: date) -> tuple[CashFlow, ...]:
-        dates = self.coupon_dates()
-        coupon_amount = self.face * self.coupon / self.frequency
-        flows = [CashFlow(d, coupon_amount) for d in dates[1:] if d > asof]
+        flows = []
+        for period in self.coupon_periods():
+            if period.payment_date <= asof:
+                continue
+            amount = (
+                self.face
+                * self.coupon
+                * _period_year_fraction(period, self.day_count, self.frequency)
+            )
+            flows.append(CashFlow(period.payment_date, amount))
         if flows:
-            last = flows[-1]
-            flows[-1] = CashFlow(last.date, last.amount + self.face)
+            flows[-1] = CashFlow(flows[-1].date, flows[-1].amount + self.face)
         return tuple(flows)
 
+    def _period_at(self, asof: date) -> SchedulePeriod:
+        periods = self.coupon_periods()
+        if not periods[0].accrual_start <= asof <= periods[-1].accrual_end:
+            raise ValueError(
+                f"{asof} lies outside the bond's life "
+                f"{periods[0].accrual_start}..{periods[-1].accrual_end}"
+            )
+        for period in periods:
+            if period.accrual_start <= asof < period.accrual_end:
+                return period
+        return periods[-1]
+
     def accrual_period(self, asof: date) -> tuple[date, date]:
-        """The coupon period containing ``asof``, as (period start, period end)."""
-        dates = self.coupon_dates()
-        if not dates[0] <= asof <= dates[-1]:
-            raise ValueError(f"{asof} lies outside the bond's life {dates[0]}..{dates[-1]}")
-        for previous, following in pairwise(dates):
-            if previous <= asof < following:
-                return previous, following
-        return dates[-2], dates[-1]
+        """The unadjusted coupon period containing ``asof``."""
+        period = self._period_at(asof)
+        return period.accrual_start, period.accrual_end
 
     def accrued(self, asof: date) -> float:
         """Accrued interest per ``face``, on the bond's own day count."""
-        period_start, period_end = self.accrual_period(asof)
+        period = self._period_at(asof)
+        if asof == period.accrual_start:
+            return 0.0
         fraction = year_fraction(
-            period_start,
+            period.accrual_start,
             asof,
             self.day_count,
-            period_start=period_start,
-            period_end=period_end,
+            period_start=period.reference_start,
+            period_end=period.reference_end,
             frequency=self.frequency,
         )
         return self.face * self.coupon * fraction
@@ -121,8 +154,11 @@ class FRN:
     spread: float
     face: float = 100.0
 
+    def coupon_periods(self) -> tuple[SchedulePeriod, ...]:
+        return schedule_periods(self.issue, self.maturity, self.frequency, self.calendar, self.bdc)
+
     def coupon_dates(self) -> tuple[date, ...]:
-        return schedule(self.issue, self.maturity, self.frequency, self.calendar, self.bdc)
+        return _payment_dates(self.coupon_periods())
 
     def cashflows(self, asof: date) -> tuple[CashFlow, ...]:
         raise NotImplementedError(
@@ -147,35 +183,35 @@ class VanillaSwap:
     notional: float = 1_000_000.0
     pay_fixed: bool = True
 
+    def fixed_periods(self) -> tuple[SchedulePeriod, ...]:
+        return schedule_periods(
+            self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc
+        )
+
     def fixed_schedule(self) -> tuple[date, ...]:
-        return schedule(self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc)
+        return _payment_dates(self.fixed_periods())
 
     def fixed_cashflows(self, asof: date) -> tuple[CashFlow, ...]:
-        dates = self.fixed_schedule()
         flows = []
-        for previous, payment_date in pairwise(dates):
-            if payment_date <= asof:
+        for period in self.fixed_periods():
+            if period.payment_date <= asof:
                 continue
-            tau = year_fraction(
-                previous,
-                payment_date,
-                self.fixed_day_count,
-                period_start=previous,
-                period_end=payment_date,
-                frequency=self.fixed_frequency,
-            )
+            tau = _period_year_fraction(period, self.fixed_day_count, self.fixed_frequency)
             amount = self.notional * self.fixed_rate * tau
-            flows.append(CashFlow(payment_date, amount))
+            flows.append(CashFlow(period.payment_date, amount))
         return tuple(flows)
 
-    def float_schedule(self) -> tuple[date, ...]:
-        return schedule(
+    def float_periods(self) -> tuple[SchedulePeriod, ...]:
+        return schedule_periods(
             self.start,
             self.maturity,
             tenor_to_frequency(self.float_tenor),
             self.calendar,
             self.bdc,
         )
+
+    def float_schedule(self) -> tuple[date, ...]:
+        return _payment_dates(self.float_periods())
 
 
 @dataclass(frozen=True)
@@ -193,11 +229,19 @@ class OIS:
     notional: float = 1_000_000.0
     pay_fixed: bool = True
 
+    def fixed_periods(self) -> tuple[SchedulePeriod, ...]:
+        return schedule_periods(
+            self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc
+        )
+
     def fixed_schedule(self) -> tuple[date, ...]:
-        return schedule(self.start, self.maturity, self.fixed_frequency, self.calendar, self.bdc)
+        return _payment_dates(self.fixed_periods())
+
+    def float_periods(self) -> tuple[SchedulePeriod, ...]:
+        return self.fixed_periods()
 
     def float_schedule(self) -> tuple[date, ...]:
-        return self.fixed_schedule()
+        return _payment_dates(self.float_periods())
 
 
 @dataclass(frozen=True)

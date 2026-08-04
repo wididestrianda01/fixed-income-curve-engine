@@ -12,8 +12,10 @@ classic source of small, plausible-looking pricing errors:
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
+from itertools import pairwise
 
 from yieldcurve.calendars import Calendar
 
@@ -39,6 +41,83 @@ class Compounding(StrEnum):
 _PERIODS_PER_YEAR = {Compounding.ANNUAL: 1, Compounding.SEMIANNUAL: 2}
 
 
+def _validate_interval(start: date, end: date) -> None:
+    if end <= start:
+        raise ValueError(f"end {end} must fall after start {start}")
+
+
+def _validate_frequency(frequency: int) -> None:
+    if frequency <= 0 or 12 % frequency != 0:
+        raise ValueError(f"frequency must divide 12 evenly, got {frequency}")
+
+
+def _last_day(year: int, month: int) -> int:
+    return (date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)).day
+
+
+def _is_month_end(d: date) -> bool:
+    return d.day == _last_day(d.year, d.month)
+
+
+def _anchored_date(anchor: date, months: int, *, anchor_day: int, end_of_month: bool) -> date:
+    total = anchor.month - 1 + months
+    year = anchor.year + total // 12
+    month = total % 12 + 1
+    last_day = _last_day(year, month)
+    day = last_day if end_of_month else min(anchor_day, last_day)
+    return date(year, month, day)
+
+
+def _reference_date(period_start: date, period_end: date, months: int) -> date:
+    return _anchored_date(
+        period_end,
+        months,
+        anchor_day=max(period_start.day, period_end.day),
+        end_of_month=_is_month_end(period_start) and _is_month_end(period_end),
+    )
+
+
+def _quasi_coupon_periods(
+    start: date, end: date, period_start: date, period_end: date, frequency: int
+) -> list[tuple[date, date]]:
+    step = 12 // frequency
+    periods = [(period_start, period_end)]
+    offset = -2
+    while start < periods[0][0]:
+        previous = _reference_date(period_start, period_end, offset * step)
+        periods.insert(0, (previous, periods[0][0]))
+        offset -= 1
+    offset = 1
+    while end > periods[-1][1]:
+        following = _reference_date(period_start, period_end, offset * step)
+        periods.append((periods[-1][1], following))
+        offset += 1
+    return periods
+
+
+def _quasi_coupon_fraction(
+    start: date, end: date, reference_start: date, reference_end: date, frequency: int
+) -> float:
+    overlap_start = max(start, reference_start)
+    overlap_end = min(end, reference_end)
+    if overlap_end <= overlap_start:
+        return 0.0
+    return (overlap_end - overlap_start).days / (reference_end - reference_start).days / frequency
+
+
+def _act_act_icma(
+    start: date, end: date, period_start: date, period_end: date, frequency: int
+) -> float:
+    periods = _quasi_coupon_periods(start, end, period_start, period_end, frequency)
+    return sum(
+        (
+            _quasi_coupon_fraction(start, end, reference_start, reference_end, frequency)
+            for reference_start, reference_end in periods
+        ),
+        0.0,
+    )
+
+
 def _thirty_360_days(start: date, end: date) -> int:
     d1 = min(start.day, 30)
     d2 = end.day
@@ -58,25 +137,22 @@ def year_fraction(
 ) -> float:
     """Return the year fraction between ``start`` and ``end`` under ``dc``.
 
-    The keyword-only arguments apply to ACT/ACT ICMA only, which is undefined
-    without the enclosing coupon period and the coupon frequency.
+    ACT/ACT ICMA requires one regular reference period and the coupon frequency.
+    Irregular accrual intervals are decomposed into quasi-coupon periods.
     """
+    _validate_interval(start, end)
     if dc is DayCount.ACT_360:
         return (end - start).days / 360.0
     if dc is DayCount.ACT_365F:
         return (end - start).days / 365.0
     if dc is DayCount.THIRTY_360_BOND:
         return _thirty_360_days(start, end) / 360.0
-
     if period_start is None or period_end is None or frequency is None:
-        raise ValueError(
-            "ACT/ACT ICMA requires period_start, period_end and frequency: "
-            "the fraction is defined relative to the enclosing coupon period."
-        )
-    period_days = (period_end - period_start).days
-    if period_days <= 0:
+        raise ValueError("ACT/ACT ICMA requires period_start, period_end and frequency")
+    if period_end <= period_start:
         raise ValueError(f"period_end {period_end} must fall after period_start {period_start}")
-    return ((end - start).days / period_days) / frequency
+    _validate_frequency(frequency)
+    return _act_act_icma(start, end, period_start, period_end, frequency)
 
 
 def discount_factor(rate: float, t: float, compounding: Compounding) -> float:
@@ -111,6 +187,23 @@ class BusinessDayConvention(StrEnum):
     UNADJUSTED = "Unadjusted"
 
 
+@dataclass(frozen=True)
+class SchedulePeriod:
+    """One coupon period with unadjusted accrual and adjusted payment dates."""
+
+    accrual_start: date
+    accrual_end: date
+    payment_date: date
+    reference_start: date
+    reference_end: date
+
+    def __post_init__(self) -> None:
+        if self.accrual_end <= self.accrual_start:
+            raise ValueError("accrual_end must fall after accrual_start")
+        if self.reference_end <= self.reference_start:
+            raise ValueError("reference_end must fall after reference_start")
+
+
 def adjust(d: date, calendar: Calendar, bdc: BusinessDayConvention) -> date:
     """Move ``d`` to a business day under ``bdc``."""
     if bdc is BusinessDayConvention.UNADJUSTED or calendar.is_business_day(d):
@@ -131,11 +224,50 @@ def _roll(d: date, calendar: Calendar, step: int) -> date:
 
 def add_months(d: date, months: int) -> date:
     """Add ``months`` calendar months, clamping to the end of a shorter month."""
-    total = d.month - 1 + months
-    year = d.year + total // 12
-    month = total % 12 + 1
-    last_day = (date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)).day
-    return date(year, month, min(d.day, last_day))
+    return _anchored_date(d, months, anchor_day=d.day, end_of_month=False)
+
+
+def _schedule_boundaries(start: date, end: date, frequency: int) -> tuple[tuple[date, ...], date]:
+    _validate_interval(start, end)
+    _validate_frequency(frequency)
+    step = 12 // frequency
+    anchored = [end]
+    offset = 1
+    while True:
+        previous = _anchored_date(
+            end,
+            -offset * step,
+            anchor_day=end.day,
+            end_of_month=_is_month_end(end),
+        )
+        if previous <= start:
+            return (start, *reversed(anchored)), previous
+        anchored.append(previous)
+        offset += 1
+
+
+def schedule_periods(
+    start: date,
+    end: date,
+    frequency: int,
+    calendar: Calendar,
+    bdc: BusinessDayConvention,
+) -> tuple[SchedulePeriod, ...]:
+    """Generate canonical coupon periods backwards from the maturity anchor."""
+    boundaries, first_reference_start = _schedule_boundaries(start, end, frequency)
+    periods = []
+    for index, (accrual_start, accrual_end) in enumerate(pairwise(boundaries)):
+        reference_start = first_reference_start if index == 0 else accrual_start
+        periods.append(
+            SchedulePeriod(
+                accrual_start,
+                accrual_end,
+                adjust(accrual_end, calendar, bdc),
+                reference_start,
+                accrual_end,
+            )
+        )
+    return tuple(periods)
 
 
 def schedule(
@@ -145,23 +277,6 @@ def schedule(
     calendar: Calendar,
     bdc: BusinessDayConvention,
 ) -> tuple[date, ...]:
-    """Period boundaries from ``start`` to ``end``, inclusive of both.
-
-    Dates are generated backwards from ``end`` because that is where coupon dates
-    are anchored in practice: an off-cycle issue produces a short or long *first*
-    period, never an odd final one.
-    """
-    if frequency <= 0 or 12 % frequency != 0:
-        raise ValueError(f"frequency must divide 12 evenly, got {frequency}")
-    if end <= start:
-        raise ValueError(f"end {end} must fall after start {start}")
-
-    step = 12 // frequency
-    unadjusted = [end]
-    while True:
-        previous = add_months(unadjusted[0], -step)
-        if previous <= start:
-            break
-        unadjusted.insert(0, previous)
-    unadjusted.insert(0, start)
-    return tuple(adjust(d, calendar, bdc) for d in unadjusted)
+    """Return the unadjusted start followed by adjusted payment dates."""
+    periods = schedule_periods(start, end, frequency, calendar, bdc)
+    return (periods[0].accrual_start, *(period.payment_date for period in periods))

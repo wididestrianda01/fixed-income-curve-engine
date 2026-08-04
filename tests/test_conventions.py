@@ -65,15 +65,75 @@ def test_act_act_icma_is_the_period_fraction_over_the_frequency() -> None:
     assert result == pytest.approx((89 / 181) * 0.5)
 
 
+def test_act_act_icma_long_first_stub_sums_quasi_coupon_periods() -> None:
+    start = date(2025, 10, 15)
+    reference_start = date(2026, 2, 28)
+    reference_end = date(2026, 8, 31)
+    previous_reference = date(2025, 8, 31)
+    expected = (
+        (reference_start - start).days / (reference_start - previous_reference).days + 1
+    ) / 2
+
+    result = year_fraction(
+        start,
+        reference_end,
+        DayCount.ACT_ACT_ICMA,
+        period_start=reference_start,
+        period_end=reference_end,
+        frequency=2,
+    )
+
+    assert result == pytest.approx(expected)
+
+
+def test_act_act_icma_long_last_stub_sums_quasi_coupon_periods() -> None:
+    start = date(2026, 2, 28)
+    reference_end = date(2026, 8, 31)
+    end = date(2026, 12, 15)
+    next_reference = date(2027, 2, 28)
+    expected = (1 + (end - reference_end).days / (next_reference - reference_end).days) / 2
+
+    result = year_fraction(
+        start,
+        end,
+        DayCount.ACT_ACT_ICMA,
+        period_start=start,
+        period_end=reference_end,
+        frequency=2,
+    )
+
+    assert result == pytest.approx(expected)
+
+
 def test_act_act_icma_without_period_information_raises() -> None:
     with pytest.raises(ValueError, match="period_start"):
         year_fraction(date(2026, 2, 15), date(2026, 5, 15), DayCount.ACT_ACT_ICMA)
 
 
-def test_year_fraction_is_negative_when_the_dates_are_reversed() -> None:
-    """Reversal must not silently produce a positive number; a reversed accrual
-    period is a caller bug, and a negative fraction makes it visible."""
-    assert year_fraction(date(2026, 7, 1), date(2026, 1, 1), DayCount.ACT_360) < 0
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        (date(2026, 7, 1), date(2026, 7, 1)),
+        (date(2026, 7, 1), date(2026, 1, 1)),
+    ],
+)
+@pytest.mark.parametrize("day_count", list(DayCount))
+def test_year_fraction_rejects_degenerate_and_reversed_intervals(
+    start: date, end: date, day_count: DayCount
+) -> None:
+    if day_count is DayCount.ACT_ACT_ICMA:
+        with pytest.raises(ValueError, match="after start"):
+            year_fraction(
+                start,
+                end,
+                day_count,
+                period_start=date(2026, 2, 28),
+                period_end=date(2026, 8, 31),
+                frequency=2,
+            )
+    else:
+        with pytest.raises(ValueError, match="after start"):
+            year_fraction(start, end, day_count)
 
 
 @pytest.mark.parametrize(
@@ -92,8 +152,8 @@ def test_discount_factor_per_compounding_basis(compounding: Compounding, expecte
 def test_act_act_icma_rejects_non_positive_period() -> None:
     with pytest.raises(ValueError, match="period_end"):
         year_fraction(
-            date(2026, 5, 15),
-            date(2026, 2, 15),
+            date(2026, 3, 1),
+            date(2026, 4, 1),
             DayCount.ACT_ACT_ICMA,
             period_start=date(2026, 2, 15),
             period_end=date(2026, 2, 15),

@@ -8,7 +8,7 @@ from datetime import date
 import pytest
 
 from yieldcurve import instruments
-from yieldcurve.calendars import NullCalendar, USGovernmentBondCalendar
+from yieldcurve.calendars import NullCalendar, SwedenCalendar, USGovernmentBondCalendar
 from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.instruments import FRN, OIS, Bill, FixedCouponBond, VanillaSwap, tenor_to_frequency
 
@@ -75,6 +75,32 @@ def test_accrued_matches_the_hand_computed_icma_fraction() -> None:
     assert bond.accrued(asof) == pytest.approx(expected)
 
 
+def test_short_stub_coupon_and_accrual_use_regular_icma_references() -> None:
+    bond = FixedCouponBond(
+        issue=date(2026, 4, 1),
+        maturity=date(2026, 8, 31),
+        coupon=0.06,
+        frequency=2,
+        day_count=DayCount.ACT_ACT_ICMA,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+    )
+    (period,) = bond.coupon_periods()
+    reference_days = (date(2026, 8, 31) - date(2026, 2, 28)).days
+    coupon_fraction = (period.accrual_end - period.accrual_start).days / reference_days / 2
+    (flow,) = bond.cashflows(asof=date(2026, 3, 31))
+
+    assert (period.reference_start, period.reference_end) == (
+        date(2026, 2, 28),
+        date(2026, 8, 31),
+    )
+    assert flow.amount == pytest.approx(bond.face + bond.face * bond.coupon * coupon_fraction)
+    accrued_fraction = (date(2026, 6, 1) - bond.issue).days / reference_days / 2
+    assert bond.accrued(date(2026, 6, 1)) == pytest.approx(
+        bond.face * bond.coupon * accrued_fraction
+    )
+
+
 def test_thirty_360_accrued_uses_the_thirty_day_month() -> None:
     """A SEK government bond accrues on 30/360, so three months is exactly a
     quarter of a year regardless of the actual day count."""
@@ -118,7 +144,12 @@ def test_frn_coupon_dates_uses_same_schedule_shape_as_bond() -> None:
         index_tenor="3M",
         spread=0.0025,
     )
+    periods = frn.coupon_periods()
     dates = frn.coupon_dates()
+    assert dates == (
+        periods[0].accrual_start,
+        *(period.payment_date for period in periods),
+    )
     assert dates[0] == date(2026, 3, 16)
     assert dates[-1] == date(2029, 3, 16)
 
@@ -157,8 +188,39 @@ def test_swap_schedules_have_the_expected_period_counts() -> None:
         bdc=BusinessDayConvention.MODIFIED_FOLLOWING,
     )
 
-    assert len(swap.fixed_schedule()) == 6
-    assert len(swap.float_schedule()) == 21
+    assert len(swap.fixed_periods()) == 5
+    assert len(swap.float_periods()) == 20
+    assert swap.fixed_schedule() == (
+        swap.fixed_periods()[0].accrual_start,
+        *(period.payment_date for period in swap.fixed_periods()),
+    )
+    assert swap.float_schedule() == (
+        swap.float_periods()[0].accrual_start,
+        *(period.payment_date for period in swap.float_periods()),
+    )
+
+
+def test_swap_cashflows_accrue_unadjusted_and_pay_adjusted() -> None:
+    swap = VanillaSwap(
+        start=date(2026, 1, 1),
+        maturity=date(2027, 1, 1),
+        fixed_rate=0.04,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.ACT_365F,
+        float_tenor="3M",
+        float_day_count=DayCount.ACT_360,
+        calendar=SwedenCalendar(),
+        bdc=BusinessDayConvention.FOLLOWING,
+    )
+
+    (period,) = swap.fixed_periods()
+    (flow,) = swap.fixed_cashflows(asof=date(2025, 12, 31))
+    assert (period.accrual_start, period.accrual_end) == (
+        date(2026, 1, 1),
+        date(2027, 1, 1),
+    )
+    assert flow.date == date(2027, 1, 4)
+    assert flow.amount == pytest.approx(swap.notional * swap.fixed_rate)
 
 
 def test_ois_matches_vanilla_swap_shape_with_float_day_count() -> None:
@@ -176,6 +238,8 @@ def test_ois_matches_vanilla_swap_shape_with_float_day_count() -> None:
     assert ois.float_day_count == DayCount.ACT_360
     assert len(ois.fixed_schedule()) == 6
     assert len(ois.float_schedule()) == 6
+    assert len(ois.fixed_periods()) == 5
+    assert ois.float_periods() == ois.fixed_periods()
 
 
 def test_no_instrument_method_accepts_a_curve() -> None:

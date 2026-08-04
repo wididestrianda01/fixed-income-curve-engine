@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from datetime import date
 
 import pytest
 
+from yieldcurve import conventions
 from yieldcurve.calendars import NullCalendar, SwedenCalendar
 from yieldcurve.conventions import BusinessDayConvention, add_months, adjust, schedule
 
@@ -59,6 +61,68 @@ def test_schedule_generates_backwards_from_maturity() -> None:
     assert len(dates) == 8
 
 
+def test_schedule_periods_preserve_the_maturity_end_of_month_anchor() -> None:
+    periods = conventions.schedule_periods(
+        date(2024, 8, 31),
+        date(2026, 8, 31),
+        frequency=2,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+    )
+
+    assert tuple(period.accrual_end for period in periods) == (
+        date(2025, 2, 28),
+        date(2025, 8, 31),
+        date(2026, 2, 28),
+        date(2026, 8, 31),
+    )
+
+
+def test_schedule_period_keeps_accrual_unadjusted_and_adjusts_only_payment() -> None:
+    (period,) = conventions.schedule_periods(
+        date(2026, 1, 1),
+        date(2027, 1, 1),
+        frequency=1,
+        calendar=SwedenCalendar(),
+        bdc=BusinessDayConvention.FOLLOWING,
+    )
+
+    assert (period.accrual_start, period.accrual_end) == (
+        date(2026, 1, 1),
+        date(2027, 1, 1),
+    )
+    assert period.payment_date == date(2027, 1, 4)
+    assert (period.reference_start, period.reference_end) == (
+        date(2026, 1, 1),
+        date(2027, 1, 1),
+    )
+
+
+def test_schedule_period_is_immutable() -> None:
+    (period,) = conventions.schedule_periods(
+        date(2026, 1, 1),
+        date(2027, 1, 1),
+        frequency=1,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+    )
+    field_name = "payment_date"
+    with pytest.raises(FrozenInstanceError):
+        setattr(period, field_name, date(2027, 1, 2))
+
+
+@pytest.mark.parametrize("accrual_end", [date(2026, 1, 1), date(2025, 12, 31)])
+def test_schedule_period_rejects_invalid_accrual_interval(accrual_end: date) -> None:
+    with pytest.raises(ValueError, match="accrual_end"):
+        conventions.SchedulePeriod(
+            accrual_start=date(2026, 1, 1),
+            accrual_end=accrual_end,
+            payment_date=accrual_end,
+            reference_start=date(2026, 1, 1),
+            reference_end=date(2027, 1, 1),
+        )
+
+
 def test_schedule_adjusts_period_ends_into_business_days() -> None:
     dates = schedule(
         date(2026, 1, 1),
@@ -68,7 +132,7 @@ def test_schedule_adjusts_period_ends_into_business_days() -> None:
         bdc=BusinessDayConvention.FOLLOWING,
     )
 
-    assert dates == (date(2026, 1, 2), date(2027, 1, 4))
+    assert dates == (date(2026, 1, 1), date(2027, 1, 4))
 
 
 def test_schedule_rejects_a_frequency_that_does_not_divide_twelve() -> None:
@@ -82,11 +146,12 @@ def test_schedule_rejects_a_frequency_that_does_not_divide_twelve() -> None:
         )
 
 
-def test_schedule_rejects_end_not_after_start() -> None:
+@pytest.mark.parametrize("end", [date(2026, 1, 1), date(2025, 12, 31)])
+def test_schedule_rejects_end_not_after_start(end: date) -> None:
     with pytest.raises(ValueError, match="after start"):
         schedule(
             date(2026, 1, 1),
-            date(2026, 1, 1),
+            end,
             frequency=1,
             calendar=NullCalendar(),
             bdc=BusinessDayConvention.UNADJUSTED,
