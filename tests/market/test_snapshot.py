@@ -52,6 +52,19 @@ def test_default_snapshot_is_read_only() -> None:
         snapshot.save("new_dataset", pd.DataFrame({"x": [1]}))
 
 
+def test_manifest_reads_are_fresh_copies() -> None:
+    """Mutating a returned manifest cannot corrupt the cached packaged copy."""
+    snapshot = Snapshot(date=PACKAGED_DATE)
+
+    pristine = snapshot.manifest
+    poisoned = snapshot.manifest
+    assert poisoned is not pristine
+    poisoned["snapshot_date"] = "1999-12-31"
+    poisoned["datasets"].pop(next(iter(poisoned["datasets"])))
+
+    assert snapshot.manifest == pristine
+
+
 @pytest.mark.parametrize(
     "name",
     [
