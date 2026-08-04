@@ -28,13 +28,13 @@ do not divide and stay defined.
 
 from __future__ import annotations
 
-import math
 from datetime import date
 
 from yieldcurve.conventions import year_fraction
 from yieldcurve.curves.pricing import price, ytm
 from yieldcurve.curves.protocol import CurveSet, curve_time
 from yieldcurve.instruments import FRN, OIS, Bill, FixedCouponBond, Instrument, VanillaSwap
+from yieldcurve.risk._validators import _require_bump, _require_unit_price
 from yieldcurve.risk.scenarios import parallel, shift_curveset
 
 _BASIS_POINT = 1e-4
@@ -73,22 +73,6 @@ def _require_bond(instrument: Instrument) -> None:
         raise TypeError(
             f"{type(instrument).__name__} has no well-defined yield "
             "for analytic duration/convexity; use effective_duration"
-        )
-
-
-def _require_bump(bump: float, measure: str) -> None:
-    if not math.isfinite(bump) or bump <= 0.0:
-        raise ValueError(f"{measure} bump must be a positive finite rate, got {bump}")
-
-
-def _require_unit_price(base: float, instrument: Instrument, measure: str) -> None:
-    """Reject normalizing by a materially zero present value (error policy:
-    the code must not normalize by near-zero PV)."""
-    if abs(base / instrument_scale(instrument)) < MIN_UNIT_PRICE:
-        raise ValueError(
-            f"{measure} is undefined for {type(instrument).__name__} with base price "
-            f"{base:.6g}: materially zero present value; "
-            "use bucket_exposure for the monetary sensitivity"
         )
 
 

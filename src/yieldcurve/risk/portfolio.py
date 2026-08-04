@@ -146,6 +146,9 @@ def _require_string(entry: dict[str, Any], field: str, label: str) -> str:
 
 
 def _require_number(entry: dict[str, Any], field: str, label: str) -> float:
+    """A number field: ``int`` and ``float`` are accepted, with an ``int``
+    widened to ``float``; ``bool``, ``str``, ``datetime`` and anything else are
+    rejected with a named error. Incompatible types are never coerced."""
     value = _required(entry, field)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise PortfolioError(
@@ -286,9 +289,9 @@ def bucket_exposure(
     *,
     bump: float = _BASIS_POINT,
 ) -> dict[float, float]:
-    """Monetary change in book value per 1bp rise in each key rate, by central
-    difference. Units: currency per 1bp, in the currency of the portfolio's
-    notionals.
+    """Monetary change in book value per unit rise in each key rate, by central
+    difference. Units: currency per unit of rate — per 1.0, a 100% move, or
+    equivalently per 100bp — in the currency of the portfolio's notionals.
 
     This is the monetary BPV ladder: unlike
     :func:`yieldcurve.risk.keyrate.krd` it never divides by the base present
@@ -299,8 +302,9 @@ def bucket_exposure(
     checkable.
 
     Raises:
-        PortfolioError: if ``bump`` is not a positive finite rate, or ``keys``
-            is not a strictly ascending finite grid of at least two tenors.
+        PortfolioError: if ``bump`` is not a positive finite rate.
+        ValueError: if ``keys`` is not a strictly ascending finite grid of at
+            least two tenors — raised by :func:`yieldcurve.risk.keyrate.hat`.
     """
     if not math.isfinite(bump) or bump <= 0.0:
         raise PortfolioError(f"bucket_exposure bump must be a positive finite rate, got {bump}")

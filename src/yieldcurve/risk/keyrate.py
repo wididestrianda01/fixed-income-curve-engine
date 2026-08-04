@@ -24,8 +24,8 @@ from typing import Final
 from yieldcurve.curves.pricing import price
 from yieldcurve.curves.protocol import CurveSet
 from yieldcurve.instruments import Instrument
+from yieldcurve.risk._validators import _require_bump, _require_unit_price
 from yieldcurve.risk.scenarios import Scenario, shift_curveset
-from yieldcurve.risk.sensitivities import MIN_UNIT_PRICE, instrument_scale
 
 SEK_KEY_RATES: Final[tuple[float, ...]] = (0.25, 0.5, 1.0, 2.0, 5.0, 7.0, 10.0)
 USD_KEY_RATES: Final[tuple[float, ...]] = (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 20.0, 30.0)
@@ -45,21 +45,6 @@ def _validate(keys: Sequence[float]) -> None:
         raise ValueError(f"Key rates must be finite, got {tuple(keys)}")
     if any(b <= a for a, b in pairwise(keys)):
         raise ValueError(f"Key rates must be strictly ascending, got {tuple(keys)}")
-
-
-def _require_bump(bump: float) -> None:
-    if not math.isfinite(bump) or bump <= 0.0:
-        raise ValueError(f"krd bump must be a positive finite rate, got {bump}")
-
-
-def _require_unit_price(base: float, instrument: Instrument) -> None:
-    """Normalized KRD must not divide by a materially zero present value."""
-    if abs(base / instrument_scale(instrument)) < MIN_UNIT_PRICE:
-        raise ValueError(
-            f"KRD is undefined for {type(instrument).__name__} with base price "
-            f"{base:.6g}: materially zero present value; "
-            "use bucket_exposure for the monetary sensitivity"
-        )
 
 
 def hat(keys: Sequence[float], index: int, size: float) -> Scenario:
@@ -140,9 +125,9 @@ def krd(
             for the monetary ladder.
     """
     _validate(keys)
-    _require_bump(bump)
+    _require_bump(bump, "krd")
     base = price(instrument, curves, asof).dirty
-    _require_unit_price(base, instrument)
+    _require_unit_price(base, instrument, "KRD")
     result: dict[float, float] = {}
     for index, key in enumerate(keys):
         up = shift_curveset(curves, hat(keys, index, bump))

@@ -69,7 +69,7 @@ def two_bonds() -> Portfolio:
 def test_present_value_matches_hand_discounted_cashflows(
     two_bonds: Portfolio, flat_curves: CurveSet
 ) -> None:
-    """Independent oracle: the 1.25% SGB in ``two_bonds`` is discounted by hand
+    """Independent oracle: the 0.125% SGB in ``two_bonds`` is discounted by hand
     from its known cash flows. 30/360 annual coupons pay 0.125 per 100 face
     every May 12, plus 100.125 at maturity; the flat 2% curve discounts with
     e^{-0.02t}. No library pricing code participates."""
