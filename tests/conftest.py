@@ -3,11 +3,39 @@ from __future__ import annotations
 import tomllib
 from datetime import date
 from importlib import resources
+from pathlib import Path
 
 import pytest
 
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
 from yieldcurve.market.snapshot import Snapshot
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ARTIFACT_DIRS = (REPO_ROOT / "dist-review", REPO_ROOT / "dist")
+
+
+def find_built_wheel() -> Path:
+    """The newest wheel under dist-review/ or dist/; fails with guidance."""
+    for directory in ARTIFACT_DIRS:
+        candidates = sorted(directory.glob("yieldcurve-*.whl"))
+        if candidates:
+            return candidates[-1]
+    raise AssertionError(
+        "no built wheel found; run `uv build --out-dir dist-review` first "
+        f"(looked in {[str(d) for d in ARTIFACT_DIRS]})"
+    )
+
+
+def find_built_sdist() -> Path:
+    """The newest sdist under dist-review/ or dist/; fails with guidance."""
+    for directory in ARTIFACT_DIRS:
+        candidates = sorted(directory.glob("yieldcurve-*.tar.gz"))
+        if candidates:
+            return candidates[-1]
+    raise AssertionError(
+        "no built sdist found; run `uv build --out-dir dist-review` first "
+        f"(looked in {[str(d) for d in ARTIFACT_DIRS]})"
+    )
 
 
 def _packaged_snapshot_date() -> date:

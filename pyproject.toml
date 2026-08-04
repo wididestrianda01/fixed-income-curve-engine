@@ -48,8 +48,12 @@ path = "src/yieldcurve/__init__.py"
 packages = ["src/yieldcurve"]
 # DOC-10/HYGIENE-01: the wheel must carry every runtime resource under
 # src/yieldcurve: the snapshot CSVs and manifest in yieldcurve/data/,
-# scenarios.toml in yieldcurve/risk/, and the py.typed marker.
+# scenarios.toml in yieldcurve/risk/, the py.typed marker, and the model
+# limitations doc (Task 13 review: controller-ruled INCLUDE). Wheel ``include``
+# only matches inside the packaged tree, so the doc rides in via
+# ``force-include`` (source -> wheel-relative path).
 include = ["src/yieldcurve/**"]
+force-include = { "docs/hull-white-limitations.md" = "docs/hull-white-limitations.md" }
 
 [tool.hatch.build.targets.sdist]
 # HYGIENE-01/04/05, SEC-03: an explicit include policy for the source

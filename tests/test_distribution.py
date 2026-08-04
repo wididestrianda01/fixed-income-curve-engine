@@ -17,21 +17,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT_DIRS = (REPO_ROOT / "dist-review", REPO_ROOT / "dist")
-
-
-def find_built_wheel() -> Path:
-    """The newest wheel under dist-review/ or dist/; fails with guidance."""
-    for directory in ARTIFACT_DIRS:
-        candidates = sorted(directory.glob("yieldcurve-*.whl"))
-        if candidates:
-            return candidates[-1]
-    raise AssertionError(
-        "no built wheel found; run `uv build --out-dir dist-review` first "
-        f"(looked in {[str(d) for d in ARTIFACT_DIRS]})"
-    )
-
+from tests.conftest import REPO_ROOT, find_built_wheel
 
 # The isolated-wheel quickstart (design spec section 7, verbatim contract):
 # imports every public module, lists packaged datasets, builds representative
@@ -43,7 +29,7 @@ QUICKSTART = textwrap.dedent(
     import importlib.metadata
     import pkgutil
     import tomllib
-    from datetime import date
+    from datetime import date, timedelta
     from importlib import resources
 
     import yieldcurve
@@ -88,11 +74,16 @@ QUICKSTART = textwrap.dedent(
     scenarios = eu_scenarios("SEK")
     assert len(scenarios) == 6
 
-    # A bond prices off the wheel-built curves.
+    # A bond prices off the wheel-built curves. The maturity is one year out,
+    # clamped to the month's last day so a Feb-29 as-of stays valid.
     from yieldcurve.curves.pricing import price
     from yieldcurve.instruments import Bill
 
-    bill = Bill(maturity=date(asof.year + 1, asof.month, asof.day))
+    try:
+        bill_maturity = asof.replace(year=asof.year + 1)
+    except ValueError:  # Feb 29 -> Feb 28 in the following year.
+        bill_maturity = date(asof.year + 1, 3, 1) - timedelta(days=1)
+    bill = Bill(maturity=bill_maturity)
     result = price(bill, usd, asof=asof)
     assert result.clean > 0.0
 
@@ -102,13 +93,17 @@ QUICKSTART = textwrap.dedent(
 
 
 def _run_uv(*args: str) -> None:
-    subprocess.run(
+    result = subprocess.run(
         ["uv", *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"uv {' '.join(args)} failed (exit {result.returncode}):\n{result.stderr}"
+        )
 
 
 @pytest.fixture(scope="module")

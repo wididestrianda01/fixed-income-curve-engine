@@ -14,8 +14,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-ARTIFACT_DIRS = (REPO_ROOT / "dist-review", REPO_ROOT / "dist")
+from tests.conftest import REPO_ROOT, find_built_sdist, find_built_wheel
 
 # Path components or filenames that must never appear inside a built artifact:
 # agent state, vector databases, caches, coverage output, worktrees, and local
@@ -58,30 +57,6 @@ LOCAL_STATE_MARKERS = (
 )
 
 
-def find_built_wheel() -> Path:
-    """The newest wheel under dist-review/ or dist/; fails with guidance."""
-    for directory in ARTIFACT_DIRS:
-        candidates = sorted(directory.glob("yieldcurve-*.whl"))
-        if candidates:
-            return candidates[-1]
-    raise AssertionError(
-        "no built wheel found; run `uv build --out-dir dist-review` first "
-        f"(looked in {[str(d) for d in ARTIFACT_DIRS]})"
-    )
-
-
-def find_built_sdist() -> Path:
-    """The newest sdist under dist-review/ or dist/; fails with guidance."""
-    for directory in ARTIFACT_DIRS:
-        candidates = sorted(directory.glob("yieldcurve-*.tar.gz"))
-        if candidates:
-            return candidates[-1]
-    raise AssertionError(
-        "no built sdist found; run `uv build --out-dir dist-review` first "
-        f"(looked in {[str(d) for d in ARTIFACT_DIRS]})"
-    )
-
-
 def _wheel_members(wheel: Path) -> list[str]:
     with zipfile.ZipFile(wheel) as archive:
         return archive.namelist()
@@ -119,12 +94,24 @@ def test_wheel_contains_every_packaged_dataset_and_scenarios() -> None:
     assert "yieldcurve/py.typed" in members
 
 
+def test_wheel_contains_model_limitations_doc() -> None:
+    """The model limitations doc ships in the wheel (Task 13 review finding 1,
+    controller-ruled INCLUDE): wheel consumers see the same caveats as sdist
+    consumers."""
+    wheel = find_built_wheel()
+    assert "docs/hull-white-limitations.md" in _wheel_members(wheel)
+
+
 def test_wheel_contains_only_package_and_metadata_members() -> None:
-    """The wheel is the package plus dist-info: no checkout files, tests, or
-    documentation sneak in."""
+    """The wheel is the package plus dist-info and the model limitations doc:
+    no checkout files, tests, or other documentation sneak in."""
     wheel = find_built_wheel()
     for member in _wheel_members(wheel):
-        assert member.startswith("yieldcurve/") or ".dist-info/" in member, member
+        assert (
+            member.startswith("yieldcurve/")
+            or member == "docs/hull-white-limitations.md"
+            or ".dist-info/" in member
+        ), member
 
 
 def test_wheel_has_no_local_state_paths() -> None:
