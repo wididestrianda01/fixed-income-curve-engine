@@ -1,373 +1,314 @@
-# Data Sources
+# Data Sources and Provenance
 
-Verified 2026-07-24. Each source section records what the endpoints actually returned on
-this date — not what documentation claims they return. All percentage quotes are stored
-as decimals (2.31% → 0.0231).
+This repository ships one frozen, read-only market-data snapshot (dated 2026-07-24) as
+packaged resources under `src/yieldcurve/data/`. The machine-readable
+`snapshot_manifest.toml` next to the CSVs is the authoritative dataset list and carries
+the same provenance fields; this document is its human-readable twin. The two records
+are pinned to each other by `tests/market/test_data_sources_document.py` and
+`tests/market/test_snapshot_contents.py`, so a dataset cannot drift apart from its
+provenance in one place only.
+
+Every dataset below records: publisher, primary URL, retrieval and observation dates,
+raw field meaning and units, the transformation applied, licence/redistribution status
+(verified against the cited page on the stated date, or explicitly marked unverified),
+classification, and known limitations.
+
+## Classification taxonomy
+
+Every packaged dataset is classified exactly one of:
+
+- **public** — observed values published by a third-party publisher, recorded with a
+  source and licence status;
+- **constructed** — computed in this repository from recorded inputs (which may be
+  public, indicative, or unverified); never presented as observed live quotes;
+- **illustrative** — fabricated values with a documented shape; not market data and not
+  a fit to any traded price.
+
+All percentage quotes are stored as decimals (2.31% → 0.0231). Licence pages were
+re-verified on 2026-08-05; retrieval of the data itself happened 2026-07-24. Where a
+licence or redistribution status could not be verified, this document says so
+explicitly instead of asserting terms.
 
 ---
 
-## Riksbank Treasury Bills (SEK)
+## riksbank_bills
+
+**Classification:** public
 
 - **Publisher:** Sveriges Riksbank
-- **API:** `https://api.riksbank.se/swea/v1/Observations/<seriesId>/<from>/<to>`
-- **Series identifiers (GroupId 6):**
+- **Primary URL:** `https://api.riksbank.se/swea/v1/Observations/<seriesId>/<from>/<to>`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 (each row's `maturity_date` is that series'
+  observation date)
+- **Raw fields and units:** API series `SETB1MBENCHC` (1M), `SETB3MBENCH` (3M),
+  `SETB6MBENCH` (6M), GroupId 6; the API publishes percentage yields. CSV columns:
+  `tenor` (label), `maturity_date` (ISO 8601), `rate` (decimal yield, 0.01933 = 1.933%).
+- **Transformation:** percentage yields divided by 100 to decimals; only tenors with a
+  live series are included (the 12M bill series `SETB12MBENCH` was discontinued in 2010).
+**Licence/redistribution:** verified — [Open data – information available for
+  re-use](https://www.riksbank.se/en-gb/about-the-riksbank/about-the-website/open-data--information-available-for-re-use/)
+  (retrieved 2026-08-05): "The Riksbank's open data is freely available and may be
+  further used without any special consent or agreement being required. Enter source,
+  Sveriges Riksbank and date." Processed statistics must not be presented as an official
+  collaboration or partnership with the Riksbank.
+- **Known limitations:** frozen 2026-07-24; the 12M bill tenor is absent (discontinued
+  2010); only published tenors are included.
 
-  | SeriesId       | Tenor | Active | Value (2026-07-24) |
-  |---------------|-------|--------|---------------------|
-  | SETB1MBENCHC  | 1M    | Yes    | 0.01933             |
-  | SETB3MBENCH   | 3M    | Yes    | 0.01974             |
-  | SETB6MBENCH   | 6M    | Yes    | 0.02043             |
-  | SETB12MBENCH  | 12M   | No     | discontinued 2010   |
+## riksbank_gov_benchmarks
 
-- **Licence:** "The Riksbank's open data is freely available and may be further used without
-  any special consent or agreement being required. Enter source, Sveriges riksbank and
-  date." — [Open data – information available for re-use](https://www.riksbank.se/en-gb/about-the-riksbank/about-the-website/open-data--information-available-for-re-use/)
-- **CSV:** `riksbank_bills.csv` — columns: `tenor`, `maturity_date`, `rate` (decimal)
-
----
-
-## Riksbank Government Benchmarks (SEK)
-
-- **Publisher:** Sveriges Riksbank
-- **API:** same as above, GroupId 7
-- **Series identifiers:**
-
-  | SeriesId  | Tenor | Value (2026-07-24) |
-  |----------|-------|---------------------|
-  | SEGVB2YC | 2Y    | 0.02478             |
-  | SEGVB5YC | 5Y    | 0.02756             |
-  | SEGVB7YC | 7Y    | 0.02848             |
-  | SEGVB10YC| 10Y   | 0.03012             |
-
-- **Tenor coverage finding (Open Item 1):** The Riksbank publishes exactly 2Y, 5Y, 7Y,
-  and 10Y government bond benchmark rates. The tenors 1Y, 15Y, 20Y, and 30Y are
-  genuinely absent from the API — confirmed via the `/Series` endpoint listing and
-  the [Series for the API](https://www.riksbank.se/en-gb/statistics/interest-rates-and-exchange-rates/retrieving-interest-rates-and-exchange-rates-via-api/series-for-the-api/)
-  documentation. The 12-month treasury bill is also discontinued (last observation
-  2010-10-06). There is no 1Y benchmark yield from this source. **Phase 4's KRD grid
-  will interpolate the 1Y tenor from the 6M bill and 2Y bond, and flag it as
-  interpolated, per the original design decision now confirmed by live data.**
-- **STIBOR:** No longer published by the Riksbank as of May 2020. Now calculated and
-  published by the Swedish Financial Benchmark Facility (SFBF). Not included in this
-  snapshot.
-- **Licence:** same as Riksbank Treasury Bills above.
-- **CSV:** `riksbank_gov_benchmarks.csv` — columns: `tenor`, `maturity_date`, `yield`
-  (decimal)
-
----
-
-## Riksbank SWESTR (SEK)
+**Classification:** public
 
 - **Publisher:** Sveriges Riksbank
-- **API:** Separate SWESTR REST API at `https://api.riksbank.se/swestr/` (requires
-  registration for extended access; unauthenticated public access rate-limited)
-- **Values (2026-07-24):**
+- **Primary URL:** `https://api.riksbank.se/swea/v1/Observations/<seriesId>/<from>/<to>`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 (each row's `maturity_date` is that series'
+  observation date)
+- **Raw fields and units:** API series `SEGVB2YC` (2Y), `SEGVB5YC` (5Y), `SEGVB7YC`
+  (7Y), `SEGVB10YC` (10Y), GroupId 7; the API publishes percentage yields. CSV columns:
+  `tenor` (label), `maturity_date` (ISO 8601), `yield` (decimal yield, 0.02478 = 2.478%).
+- **Transformation:** percentage yields divided by 100 to decimals; the 1Y, 15Y, 20Y and
+  30Y benchmark tenors are genuinely absent from the API and are not fabricated here
+  (the 1Y point is interpolated downstream in curve construction and flagged as such).
+**Licence/redistribution:** verified — same Riksbank open-data page as
+  `riksbank_bills` (retrieved 2026-08-05): free further use, source and date to be
+  entered.
+- **Known limitations:** frozen 2026-07-24; only 2Y/5Y/7Y/10Y are published; a 1Y curve
+  point must be interpolated and is not an observed quote.
 
-  | Tenor | Rate (decimal) |
-  |-------|----------------|
-  | ON    | 0.01640        |
-  | 1W    | 0.01630        |
-  | 1M    | 0.01639        |
-  | 2M    | 0.01641        |
-  | 3M    | 0.01640        |
-  | 6M    | 0.01645        |
+## riksbank_swestr
 
-  ON = SWESTR overnight (value day 2026-07-23, published 2026-07-24).
-  Compounded averages as published 2026-07-24 (value day = publication day).
+**Classification:** public
 
-- **Licence:** "SWESTR (including average rates and index) is provided free of charge
-  without any licensing expenses being demanded for use or re-publication." —
-  [Conditions for the use and re-publication of SWESTR](https://www.riksbank.se/en-gb/statistics/swestr/conditions-for-use-and-re-publishing/).
-  Must credit Sveriges Riksbank as administrator and source.
-- **CSV:** `riksbank_swestr.csv` — columns: `tenor`, `rate` (decimal)
+- **Publisher:** Sveriges Riksbank
+- **Primary URL:** `https://api.riksbank.se/swestr/`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 — the overnight (ON) value has value day 2026-07-23
+  and publication day 2026-07-24; the compounded averages have value day equal to the
+  publication day.
+- **Raw fields and units:** tenors ON, 1W, 1M, 2M, 3M, 6M; the API publishes percentage
+  rates. CSV columns: `tenor` (label), `rate` (decimal rate, 0.0164 = 1.64%).
+- **Transformation:** percentage rates divided by 100 to decimals.
+**Licence/redistribution:** verified — [Conditions for the use and re-publishing of
+  SWESTR](https://www.riksbank.se/en-gb/statistics/swestr/conditions-for-use-and-re-publishing/)
+  (retrieved 2026-08-05): "SWESTR (including average rates and index) is provided free
+  of charge without any licensing expenses being demanded for use or re-publication";
+  Sveriges Riksbank must be credited as administrator and source.
+- **Known limitations:** frozen 2026-07-24; unauthenticated public access is rate-limited
+  and registration is required for extended access.
 
----
+## riksgalden_gov_bonds
 
-## Riksgalden Government Bonds (SEK)
+**Classification:** public
 
 - **Publisher:** Swedish National Debt Office (Riksgalden)
-- **Source:** [Central Government Debt reports](https://www.riksgalden.se/en/statistics/statistics-regarding-government-securities/)
-  and [auction results](https://www.riksgalden.se/en/our-operations/central-government-borrowing/issuance/latest-auction-result/nominal-government-bonds/)
-- **Outstanding bonds as of mid-2026 (latest available report):**
+- **Primary URL:**
+  [Central Government Debt statistics](https://www.riksgalden.se/en/statistics/statistics-regarding-government-securities/)
+  and
+  [auction results](https://www.riksgalden.se/en/our-operations/central-government-borrowing/issuance/latest-auction-result/nominal-government-bonds/)
+- **Retrieval date:** 2026-07-24
+- **Observation date:** coupon, issue and maturity dates as published in the Central
+  Government Debt report current at the freeze; outstanding nominal from the September
+  2025 report (the latest available at the freeze date).
+- **Raw fields and units:** CSV columns: `isin` (ISIN identifier), `coupon` (decimal
+  coupon rate, 0.01 = 1%), `issue_date` (ISO 8601), `maturity_date` (ISO 8601),
+  `outstanding_nominal` (outstanding nominal in SEK).
+- **Transformation:** values stored as published; coupon percentages normalized to
+  decimals.
+**Licence/redistribution:** unverified — no explicit reuse licence was found on
+  riksgalden.se (checked 2026-08-05). The contents are official Swedish government
+  statistics: under the Swedish Copyright Act (1960:729, ch. 1 §9) official decisions
+  and reports are not protected by copyright, but compilation/database rights may apply.
+  This repository treats the values as public with attribution to Riksgalden; the
+  redistribution status is stated as unverified rather than asserted.
+- **Known limitations:** frozen 2026-07-24; outstanding nominal dates from the September
+  2025 report; the app excludes the 2039 and 2071 bonds because they mature beyond the
+  last curve pillar.
 
-  | ISIN          | Coupon | Issue Date | Maturity    | Outstanding (SEK) |
-  |---------------|--------|------------|-------------|---------------------|
-  | SE0007125927  | 0.0100 | 2015-05-22 | 2026-11-12  | 96,414,000,000     |
-  | SE0009496367  | 0.0075 | 2017-01-27 | 2028-05-12  | 80,513,000,000     |
-  | SE0011281922  | 0.0075 | 2018-06-01 | 2029-11-12  | 90,339,000,000     |
-  | SE0013935319  | 0.00125| 2020-03-27 | 2031-05-12  | 63,390,000,000     |
-  | SE0004517290  | 0.0225 | 2012-03-20 | 2032-06-01  | 48,597,000,000     |
-  | SE0017830730  | 0.0175 | 2022-05-06 | 2033-11-11  | 60,960,000,000     |
-  | SE0021308541  | 0.0225 | 2024-02-02 | 2035-05-11  | 69,250,000,000     |
-  | SE0025137862  | 0.0250 | 2025-06-09 | 2036-10-15  | 18,800,000,000     |
-  | SE0002829192  | 0.0350 | 2009-03-30 | 2039-03-30  | 45,466,450,000     |
-  | SE0015193313  | 0.0050 | 2020-11-24 | 2045-11-24  | 18,972,000,000     |
-  | SE0016102115  | 0.01375| 2021-06-23 | 2071-06-23  | 10,250,000,000     |
+## fred_treasury_cmt
 
-  Coupons stored as decimals. Outstanding nominal from the September 2025 Central
-  Government Debt report (latest available). Updated nominal amounts reflecting
-  2026 auctions will be incorporated when the 2026 report is published.
+**Classification:** public
 
-- **Licence:** Swedish government publications are public domain under Swedish law.
-  Attribution to Riksgalden requested.
-- **CSV:** `riksgalden_gov_bonds.csv` — columns: `isin`, `coupon`, `issue_date`,
-  `maturity_date`, `outstanding_nominal`
+- **Publisher:** Federal Reserve Bank of St. Louis (FRED); the underlying series are
+  produced by the Board of Governors of the Federal Reserve System (US) (H.15 release).
+- **Primary URL:** `https://fred.stlouisfed.org/graph/fredgraph.csv`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 (last published business-day values as of retrieval).
+- **Raw fields and units:** series `DGS1MO` … `DGS30` — U.S. Treasury constant-maturity
+  (CMT) **par yields**, percentage values. CSV columns: `series_id` (FRED series
+  identifier), `tenor_years` (tenor in years; 1M stored as 0.0833), `rate` (decimal
+  yield, 0.038 = 3.8%).
+- **Transformation:** CMT par yields divided by 100 to decimals; the one-month tenor is
+  stored as a fractional year. Any curve built from these inputs is a CMT-implied
+  approximation, not an official Treasury bootstrap.
+**Licence/redistribution:** verified facts with a recorded limitation — the underlying
+  CMT rates are U.S. Government work, which is not subject to copyright (17 U.S.C. §105;
+  public domain, citation requested). FRED's [Terms of
+  Use](https://fred.stlouisfed.org/legal/) (retrieved 2026-08-05) prohibit storing,
+  caching or archiving FRED content, data mining or scraping, and commercial use without
+  permission, and state that series may be owned by third parties; FRED does not license
+  redistribution of the underlying data. The public-domain status of the Treasury rates
+  is asserted; the FRED retrieval terms are recorded as a limitation, not overridden.
+- **Known limitations:** frozen 2026-07-24; the one-month tenor is stored as a
+  fractional year; the FRED terms restrict archiving and scraping of the retrieval
+  service itself.
 
----
+## fred_treasury_cmt_history
 
-## FRED Treasury CMT (USD)
+**Classification:** public
 
-- **Publisher:** Federal Reserve Bank of St. Louis (FRED)
-- **API/Endpoint:** `https://fred.stlouisfed.org/graph/fredgraph.csv`
-- **Series identifiers and values (2026-07-24):**
+- **Publisher:** Federal Reserve Bank of St. Louis (FRED); underlying series produced by
+  the Board of Governors of the Federal Reserve System (US) (H.15 release).
+- **Primary URL:** `https://fred.stlouisfed.org/graph/fredgraph.csv`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** daily observations from 2021-07-25 through 2026-07-24 (five
+  years ending at the snapshot date; last observation 2026-07-24).
+- **Raw fields and units:** the same CMT par-yield series as `fred_treasury_cmt`, daily.
+  CSV columns: `date` (ISO 8601 observation date), `tenor_years` (tenor in years), `rate`
+  (decimal yield).
+- **Transformation:** CMT par yields divided by 100 to decimals; observations stored
+  long-form over date × tenor; U.S. market holidays are dropped (no value is published
+  for them).
+**Licence/redistribution:** verified facts with a recorded limitation — identical to
+  `fred_treasury_cmt`: public-domain U.S. Government work, retrieved via FRED whose
+  terms restrict archiving and scraping of the service (retrieved 2026-08-05).
+- **Known limitations:** frozen 2026-07-24; five-year window ending that date; used for
+  the PCA and historical-risk derivations in the app.
 
-  | Series ID | Tenor (years) | Rate (decimal) |
-  |-----------|---------------|----------------|
-  | DGS1MO    | 0.0833        | 0.0380         |
-  | DGS3MO    | 0.25          | 0.0396         |
-  | DGS6MO    | 0.5           | 0.0408         |
-  | DGS1      | 1.0           | 0.0414         |
-  | DGS2      | 2.0           | 0.0433         |
-  | DGS3      | 3.0           | 0.0436         |
-  | DGS5      | 5.0           | 0.0443         |
-  | DGS7      | 7.0           | 0.0455         |
-  | DGS10     | 10.0          | 0.0469         |
-  | DGS20     | 20.0          | 0.0518         |
-  | DGS30     | 30.0          | 0.0516         |
+## usd_ois_swaps
 
-- **Licence:** The underlying U.S. Treasury constant maturity rates are public domain
-  (U.S. Government work). FRED terms of use (updated June 2024) restrict
-  "storing, caching, or archiving" and do not permit commercial use of FRED content
-  without permission. The CMT rates themselves originate from the U.S. Treasury and
-  are redistributable as public domain data.
-  [FRED Legal Notices](https://fred.stlouisfed.org/legal/) —
-  "You are solely responsible for complying with any requirements or restrictions
-  imposed on usage of data series by their respective owners." Treasury CMT data
-  carries the tag "Public Domain: Citation Requested." Attribution: Board of
-  Governors of the Federal Reserve System (US), retrieved via FRED.
-- **CSV:** `fred_treasury_cmt.csv` — columns: `series_id`, `tenor_years`, `rate` (decimal)
+**Classification:** constructed
 
----
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no public source for the complete grid — construction record lives in
+  this repository (`https://github.com/wididestrianda01/fixed-income-curve-engine`); the
+  base input is the FRED Treasury CMT series above.
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 (as-of date of the construction; the CMT input is
+  that day's published values and the spread is that day's close).
+- **Raw fields and units:** CSV columns: `tenor_years` (tenor in years), `par_rate`
+  (decimal par rate, 0.0412 = 4.12%).
+- **Transformation:** `par_rate = treasury_cmt_rate + ois_tsy_spread`, applied per
+  tenor, where the spread is taken from the Bloomberg generic `USSW` vs `USGG` screen at
+  the 2026-07-24 close (approximate, ±2 bp).
+**Licence/redistribution:** unverified — constructed from public-domain Treasury CMT
+  data plus a spread transcribed from a Bloomberg indicative screen; Bloomberg terminal
+  data is not freely redistributable and its terms were not verified for this mark. No
+  third-party market-data feed is redistributed; the grid is committed as a dated
+  educational mark.
+- **Known limitations:** constructed, not observed live quotes; approximate (±2 bp); not
+  a tradable mark; the spread input is an indicative screen.
 
-## USD OIS Swaps
+## usd_forecast_basis
 
-- **Source:** Constructed from the FRED Treasury CMT curve plus a dated SOFR
-  OIS–Treasury spread (see Step 3 resolution below). No single free, redistributable
-  source publishes complete SOFR OIS swap rates at all necessary tenors.
-- **Construction (2026-07-24):** `par_rate = treasury_cmt_rate + ois_tsy_spread`
-  Spread taken from Bloomberg generic `USSW` vs `USGG` as of 2026-07-24 close
-  (approximate, ±2bp). This is a placeholder pending Phase 3 Task 3.1 construction
-  of the full OIS discount curve.
+**Classification:** constructed
 
-  | Tenor (years) | Par Rate (decimal) |
-  |---------------|--------------------|
-  | 1             | 0.0412             |
-  | 2             | 0.0428             |
-  | 3             | 0.0430             |
-  | 5             | 0.0438             |
-  | 7             | 0.0450             |
-  | 10            | 0.0465             |
-  | 20            | 0.0515             |
-  | 30            | 0.0513             |
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no public source — the input is an indicative screen; construction
+  record lives in this repository
+  (`https://github.com/wididestrianda01/fixed-income-curve-engine`).
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24 (as-of date of the construction).
+- **Raw fields and units:** CSV columns: `tenor_years` (tenor in years), `basis_bp`
+  (basis spread in basis points).
+- **Transformation:** `basis_bp` = (3M Term SOFR − SOFR OIS) per tenor, from the
+  Bloomberg `S490` screen indicative mid-market on 2026-07-24, rounded to the nearest
+  0.5 bp. Downstream, the forecast curve is built as OIS par rate + `basis_bp / 1e4`.
+**Licence/redistribution:** unverified — values transcribed from a Bloomberg indicative
+  screen; the underlying Term SOFR benchmark values are proprietary to the benchmark
+  administrator and are not committed here (only the derived, rounded basis points are).
+  Redistribution terms of the screen were not verified.
+- **Known limitations:** constructed, not observed live quotes; representative, not live
+  tradable marks; the exact basis is quoted inter-dealer and varies intraday.
 
-- **Licence:** Constructed from public-domain U.S. Treasury data plus a cited spread.
-  The SOFR overnight rate itself is public domain (NY Fed).
-- **CSV:** `usd_ois_swaps.csv` — columns: `tenor_years`, `par_rate` (decimal)
+## ecb_spot_curve
 
----
-
-## USD Forecast Basis (Step 3 Fallback)
-
-### Open Item 2 Resolution — USD Forecast Curve
-
-**Branch taken: OIS + dated basis spread fallback.**
-
-1. **SOFR OIS swap rates:** No free, openly redistributable source publishes a complete
-   SOFR OIS swap curve for all required tenors. The New York Fed publishes SOFR
-   overnight (public domain) but not OIS swap rates. CheckMySwap.com provides
-   DTCC-derived OIS curves for free but their redistribution terms are unclear and
-   their data is "curated" (not a primary source). A commercial CME DataMine license
-   is required for CME-cleared swap data.
-
-2. **CME Term SOFR redistribution:** Term SOFR is CME Group proprietary benchmark
-   information. The
-   [CME Information License Agreement](https://www.cmegroup.com/market-data/files/information-license-agreement.pdf)
-   §2.2 explicitly prohibits redistribution: "no Licensee Group entity may ...
-   license, sublicense, transfer, sell, resell, publish, reproduce, or otherwise
-   distribute or redistribute the Information or any portion thereof in any manner."
-   **Term SOFR values may not be committed to this repository.**
-
-**Fallback:** Commit `usd_forecast_basis.csv` holding a dated 3M-Term-SOFR-minus-SOFR-OIS
-basis in basis points per tenor. The forecast curve will be built as OIS plus this
-basis in Phase 3 Task 3.1.
-
-  | Tenor (years) | Basis (bp) |
-  |---------------|------------|
-  | 0.25          | 1.0        |
-  | 0.5           | 1.0        |
-  | 1             | 1.5        |
-  | 2             | 2.0        |
-  | 3             | 2.5        |
-  | 5             | 3.0        |
-  | 7             | 3.5        |
-  | 10            | 4.0        |
-
-  Values are approximate, sourced from Bloomberg `S490` (3M Term SOFR vs SOFR OIS)
-  indicative mid-market as of 2026-07-24, rounded to nearest 0.5bp. These are
-  representative, not live tradable marks — the exact basis is quoted inter-dealer
-  and varies intraday. The purpose of this committed CSV is to make the repo
-  runnable without CME licensing.
-
-- **CSV:** `usd_forecast_basis.csv` — columns: `tenor_years`, `basis_bp`
-
----
-
-## ECB Spot Curve (EUR)
+**Classification:** public
 
 - **Publisher:** European Central Bank
-- **API:** `https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>`
-  (SDMX 2.1 REST)
-- **Series key:** `YC.B.U2.EUR.4F.G_N_A.SV_C_YM.SR_<TENOR>`
-  AAA-rated euro area government bonds, Svensson model, continuous compounding,
-  yield error minimisation.
-- **Tenors retrieved (2026-07-24):**
+- **Primary URL:**
+  `https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.<DATA_TYPE_FM>`
+  (SDMX 2.1 REST; spot rates are the `SR_<TENOR>` data flows)
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24
+- **Raw fields and units:** AAA-rated euro-area government bond spot curve, Svensson
+  model, continuously compounded, yield-error minimisation. The API publishes percentage
+  rates. CSV columns: `tenor_years` (tenor in years, 1–30), `zero_rate` (decimal
+  continuously compounded zero rate, 0.0264139995 = 2.64139995%).
+- **Transformation:** published percentage zero rates divided by 100 to decimals;
+  continuously compounded per the ECB technical notes; no sub-1Y tenors are published as
+  separate spot-rate series (the Svensson model extends analytically to the short end).
+**Licence/redistribution:** verified — [Policy regarding the reuse of ESCB
+  statistics](https://www.ecb.europa.eu/stats/ecb_statistics/governance_and_quality_framework/html/usage_policy.en.html)
+  (retrieved 2026-08-05): "All publicly available ESCB statistics may be reused free of
+  charge on the condition that the source is quoted (e.g. 'Source: ECB statistics.') and
+  that the statistics (including metadata) are not modified"; free reuse does not apply
+  to third-party data, and these series are ECB statistics.
+- **Known limitations:** frozen 2026-07-24; no sub-1Y spot series published; the curve is
+  a model fit, not a set of directly observed zero rates.
 
-  | Tenor (years) | Zero Rate (decimal) |
-  |---------------|---------------------|
-  | 1             | 0.026413999499      |
-  | 2             | 0.027719528205      |
-  | 3             | 0.028155144380      |
-  | 4             | 0.028503698882      |
-  | 5             | 0.028954285490      |
-  | 6             | 0.029511870664      |
-  | 7             | 0.030137314405      |
-  | 8             | 0.030790702992      |
-  | 9             | 0.031441728901      |
-  | 10            | 0.032069910464      |
-  | 15            | 0.034572882896      |
-  | 20            | 0.035928620560      |
-  | 25            | 0.036377301747      |
-  | 30            | 0.036199846793      |
+## ecb_svensson_parameters
 
-  Rates are continuously compounded zero-coupon yields, per the ECB technical
-  notes (§3: "The continuous method is used to compound interest rates" —
-  [Technical Notes](https://www.ecb.europa.eu/stats/financial_markets_and_interest_rates/euro_area_yield_curves/shared/pdf/technical_notes.pdf)).
-  No short-dated tenors (<1Y) are published as separate spot rate series; the
-  Svensson model analytically extends to the short end.
-
-- **Licence:** "All publicly available ESCB statistics may be reused free of charge on
-  the condition that the source is quoted (e.g. 'Source: ECB statistics.') and that
-  the statistics (including metadata) are not modified." —
-  [Policy regarding the reuse of ESCB statistics](https://www.ecb.europa.eu/stats/ecb_statistics/governance_and_quality_framework/html/usage_policy.en.html)
-- **CSV:** `ecb_spot_curve.csv` — columns: `tenor_years`, `zero_rate` (decimal)
-
----
-
-## ECB Svensson Parameters (EUR)
+**Classification:** public
 
 - **Publisher:** European Central Bank
-- **API:** same SDMX 2.1 endpoint, `DATA_TYPE_FM` = `BETA0`, `BETA1`, `BETA2`, `BETA3`,
-  `TAU1`, `TAU2`
-- **Values (2026-07-24):**
+- **Primary URL:** same SDMX 2.1 endpoint as `ecb_spot_curve`, data flows `BETA0`,
+  `BETA1`, `BETA2`, `BETA3`, `TAU1`, `TAU2`
+- **Retrieval date:** 2026-07-24
+- **Observation date:** 2026-07-24
+- **Raw fields and units:** CSV columns: `parameter` (Svensson parameter name), `value`
+  (BETA parameters in percent, TAU parameters in years).
+- **Transformation:** stored as published: BETA parameters are percentage values
+  (e.g. BETA0 = 1.326064682 means 1.326…%) and must be divided by 100 before the Svensson
+  formula; TAU parameters are in years and used directly; `%.10g` formatting applied.
+**Licence/redistribution:** verified — same ECB reuse policy as `ecb_spot_curve`
+  (retrieved 2026-08-05): free reuse with source quoted and statistics unmodified.
+- **Known limitations:** frozen 2026-07-24; betas are stored in percent and must be
+  divided by 100 downstream.
 
-  | Parameter | Value        | CSV (`%.10g`) |
-  |-----------|-------------|---------------|
-  | BETA0     | 1.3260646822 | 1.326064682   |
-  | BETA1     | 0.8461755436 | 0.8461755436  |
-  | BETA2     | 2.0922416378 | 2.092241638   |
-  | BETA3     | 7.3512863004 | 7.3512863     |
-  | TAU1      | 1.0791595159 | 1.079159516   |
-  | TAU2      | 15.4469075503| 15.44690755   |
+## illustrative_swaption_vols
 
-  ECB publishes beta parameters as percentages (e.g., BETA0 = 1.326…%).
-  The committed CSV stores them as-is from the API, in percent. Downstream code
-  divides by 100 to convert to decimal before feeding the Svensson formula.
-  TAU values are in years and used directly.
+**Classification:** illustrative
 
-  The "Value" column above records the raw API response; the committed CSV
-  (`ecb_svensson_parameters.csv`) uses `%.10g` formatting. Downstream phases
-  read the CSV, so numeric consistency within the repo is maintained.
-
-- **Licence:** same as ECB Spot Curve above.
-- **CSV:** `ecb_svensson_parameters.csv` — columns: `parameter`, `value`
-
----
-
-## CME Swaption Settlement Vols
-
-### Open Item 3 Resolution
-
-CME cleared-swaption settlement files require an Information License Agreement (ILA).
-The [ILA Subscriber Addendum](https://www.cmegroup.com/market-data/files/ILA-Subscriber-Addendum.pdf)
-states: "Subscriber Group shall not redistribute CME Licensed Information outside of
-Subscriber Group." Redistribution in this repository is **barred**.
-
-**Action taken:**
-- `cme_swaption_vols.csv` is **not committed** to this repository.
-- A documented fetch script (`scripts/fetch_swaption_vols.py`) will be written in
-  Phase 5 for users who hold a CME DataMine license.
-- Phase 5 calibration tests are decorated with
-  `@pytest.mark.skipif(not snapshot.path("cme_swaption_vols").exists(), reason="CME swaption vols not redistributable; run scripts/fetch_swaption_vols.py")`.
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no external source — construction record and generator live in this
+  repository (`https://github.com/wididestrianda01/fixed-income-curve-engine`).
+- **Retrieval date:** 2026-07-24 (generation as-of; the grid is generated, not
+  retrieved)
+- **Observation date:** none — the values are fabricated with a documented shape, not
+  observed.
+- **Raw fields and units:** CSV columns: `expiry` (ISO 8601 option expiry date),
+  `maturity` (ISO 8601 swap maturity date), `vol` (normal volatility in basis points).
+- **Transformation:** `sigma_bp(e, m) = (60.0 + 22.0 * e * exp(1 - e / 1.5)) * exp(-0.018 * m)`
+  with e the option expiry in years and m the underlying swap tenor in years, run over
+  expiries (0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0) and swap tenors (1.0, 2.0, 5.0, 10.0).
+  Expiry/maturity dates are `asof + floor(years * 365.25)` days. Fully deterministic;
+  regenerate with `python scripts/build_illustrative_vols.py` (the packaged resource is
+  read-only at runtime, so regeneration is a deliberate maintainer action that must also
+  update the manifest sha256).
+**Licence/redistribution:** verified — wholly generated in this repository from the
+  stated closed form; no third-party data is involved and no redistribution restrictions
+  apply to the values themselves (they are not market data).
+- **Known limitations:** illustrative, not observed live quotes; not market data; not a
+  fit to any traded price; the shape is market-plausible by construction only.
 
 ---
 
-## Illustrative ATM Swaption Normal Volatilities (USD)
+## Known gaps and exclusions
 
-- **Status:** Constructed, not observed. These volatilities are **illustrative** — they are
-  not market data and they are not a fit to any traded price.
-- **Reason:** CME cleared-swaption settlement files require a CME Information License
-  Agreement and may not be redistributed in this repository. `src/yieldcurve/market/cme.py`
-  documents the barrier. The illustrative grid fills the gap so that Hull-White calibration
-  and the Streamlit app remain runnable without a CME DataMine licence.
-- **Closed form:**
-  ```
-  sigma_bp(e, m) = (base + hump * e * exp(1 - e / peak)) * exp(-decay * m)
-  ```
-  with constants `base = 60.0 bp`, `hump = 22.0 bp`, `peak = 1.5 y`, `decay = 0.018 y⁻¹`,
-  run over expiries `(0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0)` years and swap tenors
-  `(1.0, 2.0, 5.0, 10.0)` years. The shape is market-plausible: declining in expiry beyond
-  a hump at 1–2 years, with mild decay across swap tenor.
-- **Regeneration:** `python scripts/build_illustrative_vols.py`
-- **CSV:** `illustrative_swaption_vols.csv` — columns: `expiry` (ISO date), `maturity` (ISO
-  date), `vol` (normal vol in basis points). Comment preamble (`#` lines) documents the
-  construction.
+The SEK market is incomplete in free, redistributable sources: the Riksbank publishes
+government benchmark yields at only four tenors (2Y, 5Y, 7Y, 10Y); the 1Y, 15Y, 20Y and
+30Y tenors are not published through any free API. STIBOR is no longer published by the
+Riksbank (it moved to the Swedish Financial Benchmark Facility in May 2020), and no free
+machine-readable feed is available. FRA quotes and SEK swap rates require a commercial
+terminal.
 
----
+That is why the project uses two markets (SEK + EUR/USD): the SEK curve is built from
+the four bond benchmarks, three bill rates, SWESTR and the outstanding-bond reference
+data; the EUR curve is fully specified (14 spot tenors plus Svensson parameters); the
+USD curve is constructed from Treasury CMT par yields plus a dated OIS spread and a
+Term-SOFR basis — enough for a two-curve (discount + forecast) construction without any
+licensed market-data feed.
 
-## Known Gaps
-
-**SEK market is incomplete in free, redistributable sources.** The Riksbank publishes
-benchmark yields at only four tenors (2Y, 5Y, 7Y, 10Y). The 1Y, 15Y, 20Y, and 30Y
-government benchmark tenors are not published through any free API. STIBOR — the
-standard SEK interbank rate — is no longer published by the Riksbank (moved to SFBF
-in May 2020) and SFBF does not offer a free redistributable feed. FRA (Forward Rate
-Agreement) quotes and SEK swap rates require a commercial market data terminal
-(Bloomberg, Refinitiv).
-
-**This is why the project uses two markets (SEK + EUR/USD).** The SEK curve is built
-from four bond benchmarks, three bill rates, SWESTR, and outstanding bond reference
-data — fewer instruments than would be available from a commercial source, but
-sufficient for a Nelson-Siegel-Svensson fit to the SEK government curve. The EUR curve
-is fully specified (14 tenors + Svensson parameters). The USD curve is constructed
-from 11 Treasury CMT tenors plus an OIS spread and Term SOFR basis — enough for a
-two-curve (discount + forecast) construction without depending on license-restricted
-CME data.
-
-**STIBOR gap:** STIBOR fixings are available from the SFBF website for human
-consumption but not through a machine-readable free API. They are excluded from this
-snapshot. If SFBF publishes an open API in future, STIBOR should be added as a SEK
-curve instrument.
-
----
-
-## FRED Treasury CMT History (USD)
-
-- **Publisher:** Federal Reserve Bank of St. Louis (FRED)
-- **API/Endpoint:** `https://fred.stlouisfed.org/graph/fredgraph.csv`
-- **Series identifiers:** DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS3, DGS5, DGS7, DGS10, DGS20, DGS30
-  (same as `fred_treasury_cmt`)
-- **Window:** Five years ending SNAPSHOT_DATE (2021-07-25 to 2026-07-24).
-  US market holidays are dropped (FRED returns NaN).
-- **Licence:** U.S. Treasury CMT rates are public domain (U.S. Government work).
-  Attribution: Board of Governors of the Federal Reserve System (US), retrieved via FRED.
-- **CSV:** `fred_treasury_cmt_history.csv` — columns: `date`, `tenor_years`, `rate` (decimal)
+The snapshot is frozen and fully offline: there is no network access path in the
+package and no download or update instructions are provided. Constructed datasets are
+reproducible from the records above; nothing in this repository updates market data.
