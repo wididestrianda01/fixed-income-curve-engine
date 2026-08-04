@@ -12,12 +12,12 @@ from __future__ import annotations
 import math
 import tomllib
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from yieldcurve.curves.protocol import CurveSet, DiscountCurve
+from yieldcurve.curves.protocol import CurveSet, DiscountCurve, _AlwaysDiscount
 
 
 @dataclass(frozen=True)
@@ -75,12 +75,11 @@ def shift_curveset(curves: CurveSet, scenario: Scenario) -> CurveSet:
     terms, which is a *different* scenario — a rate shock plus an offsetting
     basis shock. Shifting both is the plain reading of a rate shock.
     """
+    if isinstance(curves.forecast, _AlwaysDiscount):
+        return CurveSet.single(shift_curve(curves.discount, scenario))
     shifted = {tenor: shift_curve(curve, scenario) for tenor, curve in curves.forecast.items()}
-    # CurveSet.single answers every tenor from one curve via a default factory,
-    # and enumerates as empty until a tenor is asked for. Shift the factory too,
-    # or the shocked set would have no forecast curve at all.
     factory = getattr(curves.forecast, "default_factory", None)
-    forecast: Mapping[str, DiscountCurve] = (
+    forecast = (
         shifted
         if factory is None
         else defaultdict(lambda: shift_curve(factory(), scenario), shifted)
