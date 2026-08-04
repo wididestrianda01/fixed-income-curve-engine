@@ -1,3 +1,9 @@
+# Packaged datasets and configuration are checksummed by snapshot_manifest.toml
+# (sha256 over the bytes), so their line endings must stay stable on every
+# platform: force LF in the repository and in working trees.
+*.csv text eol=lf
+*.toml text eol=lf
+
 # Notebooks in notebooks/ are committed WITH their executed outputs, on purpose.
 #
 # The repository's git rules otherwise call for nbstripout, and stripping is the

@@ -1,7 +1,0 @@
-numpy>=2.0
-scipy>=1.14
-pandas>=2.2
-requests>=2.32
-streamlit>=1.38
-matplotlib>=3.9
-plotly>=5.24

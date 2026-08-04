@@ -30,6 +30,8 @@ __pycache__/
 .eggs/
 build/
 dist/
+# Scratch build output for packaging tests (Task 13); never committed.
+dist-review/
 .venv/
 venv/
 .mypy_cache/
@@ -42,6 +44,8 @@ htmlcov/
 # --- Notebooks ---
 # Notebook OUTPUTS are committed deliberately (recruiter-facing walkthrough);
 # nbmake re-executes them in CI so committed outputs cannot go stale.
+# notebooks/src/*.py sources are the reviewable source of truth (HYGIENE-04)
+# and are deliberately NOT ignored: new sources must stay visible to git.
 .ipynb_checkpoints/
 
 # --- Secrets ---
@@ -58,6 +62,6 @@ kaggle.json
 .superpowers/sdd/
 .worktrees/
 .hypothesis/
-notebooks/src/
 .claude-flow/
 .swarm/
+ruvector.db
