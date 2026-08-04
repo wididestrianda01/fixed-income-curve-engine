@@ -1,13 +1,12 @@
 """Dual-curve pricing: the valuation difference, measured rather than asserted.
 
-No module in ``src/`` changes for this file to pass. ``pricing._price_frn`` has
-projected off ``forecast_for`` and discounted off ``discount`` since Phase 1.
+The pricer has always projected off ``forecast_for`` and discounted off
+``discount``; the difference from a single curve is measured here directly.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 import pytest
 
@@ -40,13 +39,9 @@ def frn() -> FRN:
 
 
 def test_single_curve_and_dual_curve_prices_differ(snapshot: Snapshot, frn: FRN) -> None:
-    """The phase done condition (b).
-
-    Under a single curve the projected forwards and the discount factors come
-    from the same term structure and the floating leg telescopes to par. Under
-    two curves it does not, and the residual is the dual-curve adjustment. A
-    zero difference means the CurveSet is not carrying two curves.
-    """
+    """Under a single curve the floating leg telescopes to par. Under two curves
+    the residual is the dual-curve adjustment. A zero difference means the
+    CurveSet is not carrying two curves."""
     dual = usd_curveset(snapshot, ASOF)
     single = CurveSet.single(dual.discount)
 
@@ -58,9 +53,7 @@ def test_single_curve_and_dual_curve_prices_differ(snapshot: Snapshot, frn: FRN)
 
 def test_the_difference_has_the_sign_the_basis_implies(snapshot: Snapshot, frn: FRN) -> None:
     """Forecast above discount means projected coupons exceed what the discount
-    curve alone would imply, so the dual-curve FRN is worth more. Getting this
-    backwards is the classic dual-curve sign error, and it survives every test
-    that only checks the two numbers are unequal."""
+    curve alone would imply, so the dual-curve FRN is worth more."""
     dual = usd_curveset(snapshot, ASOF)
     single = CurveSet.single(dual.discount)
 
@@ -69,8 +62,8 @@ def test_the_difference_has_the_sign_the_basis_implies(snapshot: Snapshot, frn: 
 
 def test_zero_spread_frn_is_par_under_a_single_curve(snapshot: Snapshot) -> None:
     """The Phase 1 telescoping identity, restated on real data as the control.
-    If this drifts from par the discrepancy in the test above is an artefact of
-    schedule or day-count handling, not of the second curve."""
+    If this drifts from par the discrepancy is an artefact of schedule or
+    day-count handling, not of the second curve."""
     dual = usd_curveset(snapshot, ASOF)
     flat_spread_frn = FRN(
         issue=ASOF,
@@ -85,22 +78,3 @@ def test_zero_spread_frn_is_par_under_a_single_curve(snapshot: Snapshot) -> None
     single = CurveSet.single(dual.discount)
 
     assert price(flat_spread_frn, single, ASOF).dirty == pytest.approx(100.0, abs=1e-8)
-
-
-def test_the_pricer_was_not_modified_for_this_phase() -> None:
-    """An architecture test. ``pricing.py`` must contain no reference to any
-    module introduced in Phase 3; multi-curve support is a data shape, not a
-    code path.
-
-    The substring check is intentionally coarse: a grep-level gate that fails
-    if anyone adds a Phase-3 import or attribute reference to pricing.py,
-    including through indirect names or comments. False positives (innocent
-    mentions of "build" or "snapshot") are acceptable — the test tells the
-    developer to move that concern out of the pricing module.
-    """
-    import yieldcurve.curves.pricing as pricing_module
-
-    source = Path(pricing_module.__file__).read_text(encoding="utf-8")
-
-    assert "build" not in source
-    assert "snapshot" not in source

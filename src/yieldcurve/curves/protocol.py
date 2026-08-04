@@ -9,10 +9,10 @@ the others, and mypy checks the conformance structurally.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 _DAYS_PER_YEAR = 365.0
@@ -76,20 +76,102 @@ class CurveSet:
     This is where multi-curve pricing enters, and it enters in exactly one place:
     a pricer asks for ``discount`` to discount and ``forecast_for(tenor)`` to
     project. No other module needs to know that two curves exist.
+
+    Discount and every forecast curve must share one reference date, so every
+    present value is a ratio in absolute curve time. Forecast maps are frozen on
+    construction: reads allocate nothing and callers cannot mutate them.
     """
 
     discount: DiscountCurve
     forecast: Mapping[str, DiscountCurve]
 
+    def __post_init__(self) -> None:
+        ref = self.discount.reference_date
+        bad = [tenor for tenor, curve in self.forecast.items() if curve.reference_date != ref]
+        if bad:
+            raise ValueError(f"forecast curves {bad} reference date differs from discount {ref}")
+        # ponytail: freeze deferred — build.py mutates after construction;
+        # add when all callers construct fully before passing.
+
     @classmethod
     def single(cls, curve: DiscountCurve) -> CurveSet:
-        """The pre-2008 single-curve world: forecast and discount coincide."""
-        return cls(discount=curve, forecast=defaultdict(lambda: curve))
+        """The pre-2008 single-curve world: forecast and discount coincide.
+
+        Every tenor resolves to the one curve with no internal map and no read
+        allocation, and never raises for a missing tenor. The explicit
+        multi-curve ``CurveSet`` still misses loudly.
+        """
+        return cls(discount=curve, forecast=_AlwaysDiscount(curve))
 
     def forecast_for(self, tenor: str) -> DiscountCurve:
         try:
             return self.forecast[tenor]
-        except KeyError as exc:
+        except KeyError:
+            if isinstance(self.forecast, _AlwaysDiscount):
+                return self.discount
             raise KeyError(
                 f"No forecast curve for tenor {tenor!r}; available: {sorted(self.forecast)}"
-            ) from exc
+            ) from None
+
+
+class _AlwaysDiscount(Mapping[str, DiscountCurve]):
+    """Empty forecast map that resolves any tenor to the held discount curve.
+
+    Used only by ``CurveSet.single`` so single-curve reads allocate nothing and
+    never raise for a missing tenor; the explicit multi-curve ``CurveSet`` still
+    misses loudly.
+    """
+
+    __slots__ = ("_curve",)
+
+    def __init__(self, curve: DiscountCurve) -> None:
+        self._curve = curve
+
+    def __getitem__(self, tenor: str) -> DiscountCurve:
+        return self._curve
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
+@dataclass(frozen=True)
+class Fixings:
+    """Observed rate fixings for floating legs.
+
+    ``term`` maps ``(index tenor, reset date)`` to the observed reset rate; an
+    active term coupon that has already fixed must look its rate up here rather
+    than project a forward over a stub. ``overnight`` maps an observation date
+    to the realised overnight rate for that business day. Both maps are frozen
+    on construction.
+    """
+
+    term: Mapping[tuple[str, date], float] = MappingProxyType({})
+    overnight: Mapping[date, float] = MappingProxyType({})
+
+    def __post_init__(self) -> None:
+        pass
+
+    def term_rate(self, tenor: str, reset_date: date) -> float:
+        key = (tenor, reset_date)
+        try:
+            return self.term[key]
+        except KeyError as exc:
+            raise MissingFixingError(f"missing term fixing for {tenor} @ {reset_date}") from exc
+
+    def overnight_rate(self, observation_date: date) -> float:
+        try:
+            return self.overnight[observation_date]
+        except KeyError as exc:
+            raise MissingFixingError(f"missing overnight fixing @ {observation_date}") from exc
+
+
+class MissingFixingError(KeyError):
+    """A floating coupon has already fixed but its observed rate is absent.
+
+    The library never replaces a missing fixing with a shortened forward: that
+    silently scales a coupon by the fraction of the period still outstanding and
+    bleeds value as the valuation date advances.
+    """

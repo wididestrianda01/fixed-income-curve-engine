@@ -9,22 +9,35 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from itertools import pairwise
 
 from scipy.optimize import brentq
 
-from yieldcurve.conventions import DayCount, year_fraction
-from yieldcurve.curves.protocol import CurveSet, DiscountCurve, curve_time
+from yieldcurve.calendars import Calendar
+from yieldcurve.conventions import (
+    BusinessDayConvention,
+    DayCount,
+    adjust,
+    year_fraction,
+)
+from yieldcurve.curves.protocol import (
+    CurveSet,
+    DiscountCurve,
+    Fixings,
+    curve_time,
+)
 from yieldcurve.instruments import (
     FRN,
     OIS,
     Bill,
     CashFlow,
     FixedCouponBond,
+    Instrument,
     VanillaSwap,
 )
 
+_EMPTY = Fixings()
 _YTM_BRACKET = (-0.5, 2.0)
 _YTM_TOLERANCE = 1e-12
 
@@ -38,12 +51,24 @@ class PricingResult:
     accrued: float
 
 
+def _df(curves: CurveSet, asof: date, d: date) -> float:
+    """Discount from ``asof`` to ``d`` in absolute curve time.
+
+    Every path through this helper divides by D_r(asof) so non-flat curves
+    valued on dates other than their reference date stay correct.
+    """
+    disc = curves.discount
+    ref = disc.reference_date
+    return disc.df(curve_time(ref, d)) / disc.df(curve_time(ref, asof))
+
+
 def _pv(flows: tuple[CashFlow, ...], curves: CurveSet, asof: date) -> float:
-    curve = curves.discount
-    return sum(flow.amount * curve.df(curve_time(asof, flow.date)) for flow in flows)
+    return sum(flow.amount * _df(curves, asof, flow.date) for flow in flows)
 
 
-def price(instrument: object, curves: CurveSet, asof: date) -> PricingResult:
+def price(
+    instrument: Instrument, curves: CurveSet, asof: date, *, fixings: Fixings = _EMPTY
+) -> PricingResult:
     """Value ``instrument`` on ``curves`` as of ``asof``."""
     match instrument:
         case Bill():
@@ -54,9 +79,12 @@ def price(instrument: object, curves: CurveSet, asof: date) -> PricingResult:
             accrued = instrument.accrued(asof)
             return PricingResult(dirty=dirty, clean=dirty - accrued, accrued=accrued)
         case FRN():
-            return _price_frn(instrument, curves, asof)
-        case VanillaSwap() | OIS():
-            dirty = _price_swap(instrument, curves, asof)
+            return _price_frn(instrument, curves, asof, fixings)
+        case VanillaSwap():
+            dirty = _price_swap(instrument, curves, asof, fixings)
+            return PricingResult(dirty=dirty, clean=dirty, accrued=0.0)
+        case OIS():
+            dirty = _price_ois(instrument, curves, asof, fixings)
             return PricingResult(dirty=dirty, clean=dirty, accrued=0.0)
         case _:
             raise TypeError(
@@ -65,126 +93,7 @@ def price(instrument: object, curves: CurveSet, asof: date) -> PricingResult:
             )
 
 
-def _price_frn(frn: FRN, curves: CurveSet, asof: date) -> PricingResult:
-    """Project coupons off the forecast curve, discount them off the discount curve.
-
-    Those being two different curves is the whole content of multi-curve pricing.
-    """
-    forecast = curves.forecast_for(frn.index_tenor)
-    discount = curves.discount
-    dates = frn.coupon_dates()
-    periods = [(start, end) for start, end in pairwise(dates) if end > asof]
-    if not periods:
-        return PricingResult(dirty=0.0, clean=0.0, accrued=0.0)
-
-    dirty = 0.0
-    accrued = 0.0
-    for period_start, payment_date in periods:
-        tau = year_fraction(period_start, payment_date, frn.day_count)
-        projected = _projected_rate(forecast, period_start, payment_date, asof, frn.day_count)
-        coupon = frn.face * (projected + frn.spread)
-        dirty += coupon * tau * discount.df(curve_time(asof, payment_date))
-        if period_start < asof:
-            accrued = coupon * year_fraction(period_start, asof, frn.day_count)
-    dirty += frn.face * discount.df(curve_time(asof, dates[-1]))
-    return PricingResult(dirty=dirty, clean=dirty - accrued, accrued=accrued)
-
-
-def _projected_rate(
-    forecast: DiscountCurve,
-    period_start: date,
-    payment_date: date,
-    asof: date,
-    day_count: DayCount,
-) -> float:
-    """The rate a floating period accrues at, as seen from ``asof``.
-
-    A period that started before ``asof`` fixed its rate on a date the curve
-    cannot reach, and this library holds no historical fixings. The stand-in is
-    the forward over what is left of the period, ``[asof, payment_date]`` —
-    annualised over *that* stub, not over the full period. Dividing a stub
-    numerator by the full-period accrual would scale the coupon by the fraction
-    of the period still outstanding, so the leg would bleed value purely as the
-    valuation date advanced.
-    """
-    accrual_start = max(period_start, asof)
-    horizon = year_fraction(accrual_start, payment_date, day_count)
-    t1 = curve_time(asof, accrual_start)
-    t2 = curve_time(asof, payment_date)
-    return _simple_forward(forecast, t1, t2, horizon)
-
-
-def _simple_forward(curve: DiscountCurve, t1: float, t2: float, tau: float) -> float:
-    """The simple-compounded forward implied by a curve over [t1, t2].
-
-    Coupons accrue simply, so the projected rate must be the simple forward
-    ``(df1/df2 - 1)/tau``, not the continuously compounded ``fwd``.
-    """
-    if tau == 0.0:
-        return 0.0
-    df1 = curve.df(t1)
-    df2 = curve.df(t2)
-    return (df1 / df2 - 1.0) / tau
-
-
-def _brentq(f: Callable[[float], float], a: float, b: float, **kwargs: object) -> float:
-    return float(brentq(f, a, b, **kwargs))
-
-
-def _price_swap(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    """Value from the perspective of the fixed-rate payer when ``pay_fixed``."""
-    fixed_leg = _fixed_leg_pv(swap, curves, asof)
-    floating_leg = _floating_leg_pv(swap, curves, asof)
-    net = floating_leg - fixed_leg
-    return net if swap.pay_fixed else -net
-
-
-def _fixed_leg_pv(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    return swap.fixed_rate * swap.notional * annuity(swap, curves, asof)
-
-
-def _floating_leg_pv(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    discount = curves.discount
-    tenor = "ON" if isinstance(swap, OIS) else swap.float_tenor
-    forecast = discount if isinstance(swap, OIS) else curves.forecast_for(tenor)
-    day_count = swap.float_day_count
-    dates = swap.float_schedule()
-    total = 0.0
-    for previous, payment_date in pairwise(dates):
-        if payment_date <= asof:
-            continue
-        tau = year_fraction(previous, payment_date, day_count)
-        projected = _projected_rate(forecast, previous, payment_date, asof, day_count)
-        total += swap.notional * projected * tau * discount.df(curve_time(asof, payment_date))
-    return total
-
-
-def annuity(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    """Sum of accrual-weighted discount factors on the fixed leg, per unit notional."""
-    discount = curves.discount
-    dates = swap.fixed_schedule()
-    total = 0.0
-    for previous, payment_date in pairwise(dates):
-        if payment_date <= asof:
-            continue
-        tau = year_fraction(
-            previous,
-            payment_date,
-            swap.fixed_day_count,
-            period_start=previous,
-            period_end=payment_date,
-            frequency=swap.fixed_frequency,
-        )
-        total += tau * discount.df(curve_time(asof, payment_date))
-    return total
-
-
-def par_rate(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    """The fixed rate making ``swap`` worth zero."""
-    denominator = annuity(swap, curves, asof) * swap.notional
-    if denominator == 0.0:
-        raise ValueError("Swap has no remaining fixed payments; par rate is undefined")
-    return _floating_leg_pv(swap, curves, asof) / denominator
+# -- fixed-coupon bond helpers ------------------------------------------------
 
 
 def ytm(bond: FixedCouponBond, dirty_price: float, asof: date) -> float:
@@ -221,3 +130,203 @@ def ytm(bond: FixedCouponBond, dirty_price: float, asof: date) -> float:
     if residual(low) * residual(high) > 0.0:
         raise ValueError(f"No yield in [{low}, {high}] reproduces a dirty price of {dirty_price}")
     return _brentq(residual, low, high, xtol=_YTM_TOLERANCE)
+
+
+# -- FRN pricing --------------------------------------------------------------
+
+
+def _price_frn(frn: FRN, curves: CurveSet, asof: date, fixings: Fixings) -> PricingResult:
+    """Project coupons off the forecast curve, discount off the discount curve."""
+    forecast = curves.forecast_for(frn.index_tenor)
+    dates = frn.coupon_dates()
+    periods = [(start, end) for start, end in pairwise(dates) if end > asof]
+    if not periods:
+        return PricingResult(dirty=0.0, clean=0.0, accrued=0.0)
+
+    dirty = 0.0
+    accrued = 0.0
+    for period_start, payment_date in periods:
+        tau = year_fraction(period_start, payment_date, frn.day_count)
+        if period_start < asof:
+            rate = fixings.term_rate(frn.index_tenor, period_start)
+        else:
+            rate = _forward_rate(forecast, period_start, payment_date, frn.day_count)
+        coupon = frn.face * (rate + frn.spread)
+        dirty += coupon * tau * _df(curves, asof, payment_date)
+        if period_start < asof:
+            accrued = coupon * year_fraction(period_start, asof, frn.day_count)
+    dirty += frn.face * _df(curves, asof, dates[-1])
+    return PricingResult(dirty=dirty, clean=dirty - accrued, accrued=accrued)
+
+
+# -- forward rate projection ---------------------------------------------------
+
+
+def _forward_rate(curve: DiscountCurve, start: date, end: date, day_count: DayCount) -> float:
+    """The simple-compounded forward over [start, end] in absolute curve time."""
+    ref = curve.reference_date
+    t1 = curve_time(ref, start)
+    t2 = curve_time(ref, end)
+    tau = year_fraction(start, end, day_count)
+    return _simple_forward(curve, t1, t2, tau)
+
+
+def _simple_forward(curve: DiscountCurve, t1: float, t2: float, tau: float) -> float:
+    if tau == 0.0:
+        return 0.0
+    df1 = curve.df(t1)
+    df2 = curve.df(t2)
+    return (df1 / df2 - 1.0) / tau
+
+
+# -- vanilla swap pricing -----------------------------------------------------
+
+
+def _price_swap(swap: VanillaSwap, curves: CurveSet, asof: date, fixings: Fixings) -> float:
+    """Value from the perspective of the fixed-rate payer when ``pay_fixed``."""
+    fixed_leg = _fixed_leg_pv(swap, curves, asof)
+    floating_leg = _term_floating_leg_pv(swap, curves, asof, fixings)
+    net = floating_leg - fixed_leg
+    return net if swap.pay_fixed else -net
+
+
+def _fixed_leg_pv(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
+    return swap.fixed_rate * swap.notional * annuity(swap, curves, asof)
+
+
+def _term_floating_leg_pv(
+    swap: VanillaSwap, curves: CurveSet, asof: date, fixings: Fixings | None = None
+) -> float:
+    forecast = curves.forecast_for(swap.float_tenor)
+    day_count = swap.float_day_count
+    dates = swap.float_schedule()
+    total = 0.0
+    for previous, payment_date in pairwise(dates):
+        if payment_date <= asof:
+            continue
+        tau = year_fraction(previous, payment_date, day_count)
+        if fixings is not None and previous < asof:
+            rate = fixings.term_rate(swap.float_tenor, previous)
+        else:
+            accrual_start = max(previous, asof)
+            rate = _forward_rate(forecast, accrual_start, payment_date, day_count)
+        total += swap.notional * rate * tau * _df(curves, asof, payment_date)
+    return total
+
+
+# -- OIS pricing --------------------------------------------------------------
+
+
+def _price_ois(ois: OIS, curves: CurveSet, asof: date, fixings: Fixings) -> float:
+    fixed_leg = _fixed_leg_pv(ois, curves, asof)
+    floating_leg = _ois_floating_leg_pv(ois, curves, asof, fixings)
+    net = floating_leg - fixed_leg
+    return net if ois.pay_fixed else -net
+
+
+def _ois_floating_leg_pv(
+    ois: OIS, curves: CurveSet, asof: date, fixings: Fixings | None = None
+) -> float:
+    forecast = curves.discount
+    day_count = ois.float_day_count
+    calendar = ois.calendar
+    periods = ois.float_periods()
+    # date-only float schedule is _payment_dates(…); periods expose accrual_start/end.
+    # The leg compounds each business-day overnight fixing inside each period.
+    total = 0.0
+    for period in periods:
+        if period.payment_date <= asof:
+            continue
+        p_start, p_end = period.accrual_start, period.accrual_end
+        tau = year_fraction(p_start, p_end, day_count)
+        rate = _ois_period_rate(p_start, p_end, asof, calendar, forecast, day_count, fixings)
+        total += ois.notional * rate * tau * _df(curves, asof, period.payment_date)
+    return total
+
+
+def _ois_period_rate(
+    p_start: date,
+    p_end: date,
+    asof: date,
+    calendar: Calendar,
+    forecast: DiscountCurve,
+    day_count: DayCount,
+    fixings: Fixings | None = None,
+) -> float:
+    """Overnight-indexed rate: product of realised fixings * forward remainder.
+
+    Realised overnight observations compound from *p_start* through *asof*.
+    The remaining stub from *asof* to *p_end* is the curve forward factor.
+    For a fully future period the realised product is 1 and the forward runs
+    over the whole period.
+    """
+    # compound realised overnight fixings [p_start, asof)
+    realized = 1.0
+    d = _next_business_day(p_start, calendar, BusinessDayConvention.FOLLOWING)
+    prev = p_start
+    if fixings is not None:
+        while d <= asof:
+            dt = year_fraction(prev, d, day_count)
+            realized *= 1.0 + fixings.overnight_rate(prev) * dt
+            prev = d
+            d = _next_business_day(d + timedelta(days=1), calendar, BusinessDayConvention.FOLLOWING)
+    if prev < asof:
+        # asof landed mid-period (non-business-day gap); no more observations,
+        # but the forward stub starts from asof, not prev.
+        pass
+    ref = forecast.reference_date
+    if fixings is None:
+        forward_factor = forecast.df(curve_time(ref, p_start)) / forecast.df(curve_time(ref, p_end))
+    elif prev > p_start:
+        forward_factor = forecast.df(curve_time(ref, asof)) / forecast.df(curve_time(ref, p_end))
+    else:
+        forward_factor = forecast.df(curve_time(ref, p_start)) / forecast.df(curve_time(ref, p_end))
+    tau = year_fraction(p_start, p_end, day_count)
+    return (realized * forward_factor - 1.0) / tau
+
+
+# -- annuity, par rate --------------------------------------------------------
+
+
+def annuity(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
+    """Sum of accrual-weighted discount factors on the fixed leg, per unit notional."""
+    dates = swap.fixed_schedule()
+    total = 0.0
+    for previous, payment_date in pairwise(dates):
+        if payment_date <= asof:
+            continue
+        tau = year_fraction(
+            previous,
+            payment_date,
+            swap.fixed_day_count,
+            period_start=previous,
+            period_end=payment_date,
+            frequency=swap.fixed_frequency,
+        )
+        total += tau * _df(curves, asof, payment_date)
+    return total
+
+
+def par_rate(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
+    """The fixed rate making ``swap`` worth zero."""
+    denominator = annuity(swap, curves, asof) * swap.notional
+    if denominator == 0.0:
+        raise ValueError("Swap has no remaining fixed payments; par rate is undefined")
+    match swap:
+        case VanillaSwap():
+            return _term_floating_leg_pv(swap, curves, asof) / denominator
+        case _:
+            return _ois_floating_leg_pv(swap, curves, asof, _EMPTY) / denominator
+
+
+# -- internal helpers ---------------------------------------------------------
+
+
+def _next_business_day(d: date, calendar: Calendar, bdc: BusinessDayConvention) -> date:
+    """Return the next business day, strictly after ``d``."""
+    nxt = d + timedelta(days=1)
+    return adjust(nxt, calendar, bdc)
+
+
+def _brentq(f: Callable[[float], float], a: float, b: float, **kwargs: object) -> float:
+    return float(brentq(f, a, b, **kwargs))
