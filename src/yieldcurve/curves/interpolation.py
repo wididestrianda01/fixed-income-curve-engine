@@ -53,6 +53,11 @@ class CurveConstructionError(ValueError):
     """A curve was asked to exist with inputs that cannot define one."""
 
 
+def _require_curve_time(t: float) -> None:
+    if not math.isfinite(t) or t < 0.0:
+        raise ValueError(f"Curve time must be finite and non-negative, got {t}")
+
+
 class InterpMethod(StrEnum):
     """Interpolation schemes, all acting on log discount factors."""
 
@@ -134,24 +139,23 @@ class InterpolatedDiscountCurve:
     # --- the DiscountCurve contract -------------------------------------------
 
     def df(self, t: float) -> float:
-        if t < 0.0:
-            raise ValueError(f"Curve time must be non-negative, got {t}")
+        _require_curve_time(t)
         if t == 0.0:
             return 1.0
         return math.exp(self._log_df_at(t))
 
     def zero(self, t: float) -> float:
-        if t < 0.0:
-            raise ValueError(f"Curve time must be non-negative, got {t}")
+        _require_curve_time(t)
         if t == 0.0:
             return self._zero_rates[0]
         return -self._log_df_at(t) / t
 
     def fwd(self, t1: float, t2: float) -> float:
+        if not (math.isfinite(t1) and math.isfinite(t2)):
+            raise ValueError(f"Curve times must be finite, got ({t1}, {t2})")
         if t2 <= t1:
             raise ValueError(f"t2 {t2} must exceed t1 {t1}")
-        if t1 < 0.0:
-            raise ValueError(f"Curve time must be non-negative, got {t1}")
+        _require_curve_time(t1)
         return -(self._log_df_at(t2) - self._log_df_at(t1)) / (t2 - t1)
 
     def instantaneous_fwd(self, t: float) -> float:
@@ -164,6 +168,7 @@ class InterpolatedDiscountCurve:
         than ``-(log(df(high)) - log(df(low))) / (high - low)`` to avoid the
         log(exp(x)) roundtrip that costs ~1e-10 in precision.
         """
+        _require_curve_time(t)
         h = 1e-6
         low = max(t - h, 0.0)
         high = t + h

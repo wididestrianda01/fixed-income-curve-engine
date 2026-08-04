@@ -83,14 +83,14 @@ def render(state: AppState) -> None:
         base = curves.get(InterpMethod.MONOTONE_CONVEX, next(iter(curves.values())))
         observed: Sequence[float] = [base.zero(float(t)) for t in times]
         fit = Svensson.fit(times, observed, reference_date=state.asof)
-        st.metric("Svensson RMSE (bp)", f"{fit.rmse(times, observed) * _BP:.2f}")
+        st.metric("Svensson RMSE (bp)", f"{fit.rmse * _BP:.2f}")
         st.plotly_chart(
             overlay_figure(
                 {
                     "Bootstrapped": (list(times), [z * 100.0 for z in observed]),
                     "Svensson": (
                         list(times),
-                        [fit.zero(float(t)) * 100.0 for t in times],
+                        [fit.curve.zero(float(t)) * 100.0 for t in times],
                     ),
                 },
                 y_title="Zero rate (%)",

@@ -1,4 +1,4 @@
-"""Day-count conventions and compounding bases.
+"""Day-count conventions and schedule helpers.
 
 Two distinct notions of time live in this library and confusing them is the
 classic source of small, plausible-looking pricing errors:
@@ -11,7 +11,6 @@ classic source of small, plausible-looking pricing errors:
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
@@ -27,18 +26,6 @@ class DayCount(StrEnum):
     ACT_365F = "ACT/365F"
     THIRTY_360_BOND = "30/360 Bond Basis"
     ACT_ACT_ICMA = "ACT/ACT ICMA"
-
-
-class Compounding(StrEnum):
-    """Compounding bases for quoted rates."""
-
-    SIMPLE = "Simple"
-    ANNUAL = "Annual"
-    SEMIANNUAL = "Semiannual"
-    CONTINUOUS = "Continuous"
-
-
-_PERIODS_PER_YEAR = {Compounding.ANNUAL: 1, Compounding.SEMIANNUAL: 2}
 
 
 def _validate_interval(start: date, end: date) -> None:
@@ -153,29 +140,6 @@ def year_fraction(
         raise ValueError(f"period_end {period_end} must fall after period_start {period_start}")
     _validate_frequency(frequency)
     return _act_act_icma(start, end, period_start, period_end, frequency)
-
-
-def discount_factor(rate: float, t: float, compounding: Compounding) -> float:
-    """Discount factor for ``rate`` over ``t`` years on the given basis."""
-    if compounding is Compounding.SIMPLE:
-        return 1.0 / (1.0 + rate * t)
-    if compounding is Compounding.CONTINUOUS:
-        return math.exp(-rate * t)
-    n: float = _PERIODS_PER_YEAR[compounding]
-    return float((1.0 + rate / n) ** (-n * t))
-
-
-def to_continuous(rate: float, t: float, compounding: Compounding) -> float:
-    """Convert a quoted rate to its continuously compounded equivalent over ``t``.
-
-    Simple rates are horizon-dependent, which is why ``t`` is required rather
-    than optional: there is no single continuous rate equivalent to a simple one.
-    """
-    if compounding is Compounding.CONTINUOUS:
-        return rate
-    if t <= 0.0:
-        raise ValueError(f"t must be positive to convert a rate, got {t}")
-    return -math.log(discount_factor(rate, t, compounding)) / t
 
 
 class BusinessDayConvention(StrEnum):

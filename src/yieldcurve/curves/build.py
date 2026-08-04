@@ -36,6 +36,7 @@ from yieldcurve.market.snapshot import Snapshot
 _FORECAST_TENOR = "3M"
 _CANONICAL_TOLERANCE = 1e-10
 _MONTH_ALIGNMENT_TOLERANCE = 1e-3
+_MAX_TENOR_YEARS = 1000.0
 
 __all__ = [
     "CurveDataError",
@@ -80,6 +81,10 @@ def _maturity(asof: date, years: float) -> date:
     """
     if not math.isfinite(years) or years <= 0.0:
         raise CurveDataError(f"Invalid tenor in years: {years!r}")
+    if years > _MAX_TENOR_YEARS:
+        raise CurveDataError(
+            f"Tenor {years!r} years exceeds the supported maximum of {_MAX_TENOR_YEARS:g} years"
+        )
     months = round(years * 12.0)
     if abs(months / 12.0 - years) <= _MONTH_ALIGNMENT_TOLERANCE:
         return _add_months(asof, months)

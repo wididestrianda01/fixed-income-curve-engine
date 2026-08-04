@@ -1,19 +1,12 @@
-"""Day-count fractions and compounding conversions."""
+"""Day-count fractions."""
 
 from __future__ import annotations
 
-import math
 from datetime import date
 
 import pytest
 
-from yieldcurve.conventions import (
-    Compounding,
-    DayCount,
-    discount_factor,
-    to_continuous,
-    year_fraction,
-)
+from yieldcurve.conventions import DayCount, year_fraction
 
 
 def test_act_360_counts_actual_days_over_360() -> None:
@@ -136,19 +129,6 @@ def test_year_fraction_rejects_degenerate_and_reversed_intervals(
             year_fraction(start, end, day_count)
 
 
-@pytest.mark.parametrize(
-    ("compounding", "expected"),
-    [
-        (Compounding.SIMPLE, 1 / 1.05),
-        (Compounding.ANNUAL, 1.05**-1.0),
-        (Compounding.SEMIANNUAL, 1.025**-2.0),
-        (Compounding.CONTINUOUS, math.exp(-0.05)),
-    ],
-)
-def test_discount_factor_per_compounding_basis(compounding: Compounding, expected: float) -> None:
-    assert discount_factor(0.05, 1.0, compounding) == pytest.approx(expected)
-
-
 def test_act_act_icma_rejects_non_positive_period() -> None:
     with pytest.raises(ValueError, match="period_end"):
         year_fraction(
@@ -158,18 +138,4 @@ def test_act_act_icma_rejects_non_positive_period() -> None:
             period_start=date(2026, 2, 15),
             period_end=date(2026, 2, 15),
             frequency=2,
-        )
-
-
-def test_to_continuous_rejects_non_positive_t() -> None:
-    with pytest.raises(ValueError, match="positive"):
-        to_continuous(0.05, 0.0, Compounding.SIMPLE)
-
-
-def test_to_continuous_inverts_discount_factor() -> None:
-    """A quote converted to continuous compounding must discount identically."""
-    for compounding in Compounding:
-        continuous = to_continuous(0.05, 2.0, compounding)
-        assert discount_factor(continuous, 2.0, Compounding.CONTINUOUS) == pytest.approx(
-            discount_factor(0.05, 2.0, compounding)
         )

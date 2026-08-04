@@ -235,3 +235,21 @@ def test_a_time_of_zero_among_the_knots_is_rejected() -> None:
             dfs=(1.0, 0.97),
             method=InterpMethod.LOG_LINEAR_DF,
         )
+
+
+def test_non_finite_evaluation_times_are_rejected() -> None:
+    """NaN and infinity are not curve times: the interpolation code would return
+    garbage for them (zero(inf) degenerates to nan, df(nan) divides by zero),
+    so the guard is explicit — the same discipline as the construction checks."""
+    curve = build(InterpMethod.LOG_LINEAR_DF)
+
+    for call in (curve.df, curve.zero, curve.instantaneous_fwd):
+        for bad in (float("nan"), float("inf")):
+            with pytest.raises(ValueError, match="finite"):
+                call(bad)
+    with pytest.raises(ValueError, match="finite"):
+        curve.fwd(float("nan"), 2.0)
+    with pytest.raises(ValueError, match="finite"):
+        curve.fwd(1.0, float("inf"))
+    with pytest.raises(ValueError, match="non-negative"):
+        curve.zero(-0.5)

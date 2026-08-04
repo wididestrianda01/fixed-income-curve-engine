@@ -206,3 +206,16 @@ def test_missing_dataset_raises_a_named_error(snapshot: Snapshot, tmp_path: Path
 
     with pytest.raises((CurveDataError, FileNotFoundError)):
         usd_ois_curve(empty, ASOF)
+
+
+def test_an_absurdly_large_tenor_is_rejected_with_a_named_error(tmp_path: Path) -> None:
+    """A finite but absurd tenor (1e300 years) must fail with the named domain
+    error before any arithmetic, not with an OverflowError from round()."""
+    snap = Snapshot(date=ASOF, root=tmp_path / "snapshot")
+    snap.save(
+        "usd_ois_swaps",
+        pd.DataFrame({"tenor_years": [1.0, 1e300], "par_rate": [0.04, 0.05]}),
+    )
+
+    with pytest.raises(CurveDataError, match="exceeds"):
+        usd_ois_curve(snap, ASOF)

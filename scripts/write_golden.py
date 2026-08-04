@@ -52,7 +52,7 @@ def compute() -> dict[str, float]:
     times = np.linspace(0.05, 10.0, 400)
     zeros = np.array([sek.zero(t) for t in times])
     fit = Svensson.fit(times.tolist(), zeros.tolist(), reference_date=ASOF)
-    result["sek.svensson.rmse_bp"] = fit.rmse(times.tolist(), zeros.tolist()) * 10_000.0
+    result["sek.svensson.rmse_bp"] = fit.rmse * 10_000.0
 
     # Bond pricing
     bond_2031 = FixedCouponBond(
