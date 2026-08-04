@@ -8,12 +8,20 @@ for exactly that reason.
 
 Three schemes are offered:
 
-* ``LOG_LINEAR_DF`` — the market default. Cheap, always monotone, and produces a
-  sawtooth forward curve.
-* ``CUBIC_LOG_DF`` — smooth forwards, but a cubic spline can overshoot and is not
-  guaranteed monotone, so a discount factor can in principle rise.
-* ``MONOTONE_CONVEX`` — Hagan and West (2006). Continuous forwards and monotone
-  discount factors at once.
+* ``LOG_LINEAR_DF`` — the canonical calibration default. Log-linear in the
+  discount factor, it preserves positivity for any positive knots and is valid
+  for negative rates (the log of a positive discount factor is defined whatever
+  the sign of the zero rate). It preserves monotonicity — discount factors that
+  never rise with time — only when the knot discount factors are themselves
+  monotone non-increasing. The cost is a sawtooth forward curve, piecewise
+  constant between knots.
+* ``CUBIC_LOG_DF`` — smooth forwards, but a cubic spline can overshoot, so a
+  discount factor can in principle rise with time even between monotone knots.
+* ``MONOTONE_CONVEX`` — Hagan and West (2006). Continuous forwards and, for
+  monotone knots, monotone discount factors at once. This is a comparative
+  overlay, not the canonical calibration: it omits Hagan-West's positivity
+  amendment, so it can represent negative forwards, and its final quote
+  residuals are measured rather than asserted to vanish.
 
 One deliberate deviation from Hagan-West: their *positivity* amendment, which
 clamps interpolated instantaneous forwards to be non-negative, is not
@@ -21,6 +29,11 @@ implemented. It was written for a world without negative rates. SEK and EUR
 forwards have been negative within the sample period this project uses, and
 clamping them would silently distort the curve. Their *monotonicity* amendments —
 the four-region construction below — are implemented in full.
+
+Every scheme extrapolates flat in the zero rate beyond the last knot, at both
+ends of the curve. Extrapolated values are unobservable (Level 3) inputs: the
+flat rule is a stated modelling choice, not observed market data, and
+``covered_horizon`` records the largest curve time backed by quoted inputs.
 """
 
 from __future__ import annotations
@@ -54,12 +67,17 @@ class InterpolatedDiscountCurve:
 
     ``times`` are ACT/365F years from ``reference_date``, strictly increasing and
     strictly positive. The point ``t = 0, df = 1`` is implicit.
+
+    ``covered_horizon`` is the largest curve time backed by quoted inputs —
+    the last knot unless a builder states a shorter data horizon. Beyond it the
+    curve extrapolates flat in the zero rate, an unobservable (Level 3) rule.
     """
 
     reference_date: date
     times: tuple[float, ...]
     dfs: tuple[float, ...]
     method: InterpMethod
+    covered_horizon: float | None = None
 
     # Derived once in __post_init__. The curve is immutable, so everything below is
     # a pure function of the knots — and the bootstrap rebuilds a curve on every
@@ -79,6 +97,10 @@ class InterpolatedDiscountCurve:
             )
         if not self.times:
             raise CurveConstructionError("A curve needs at least one knot")
+        if any(not math.isfinite(t) for t in self.times):
+            raise CurveConstructionError(f"Knot times must be finite: {self.times}")
+        if any(not math.isfinite(df) for df in self.dfs):
+            raise CurveConstructionError(f"Discount factors must be finite: {self.dfs}")
         if any(t <= 0.0 for t in self.times):
             raise CurveConstructionError(
                 "Knot times must be positive; t = 0 with df = 1 is implicit and must "
@@ -88,6 +110,13 @@ class InterpolatedDiscountCurve:
             raise CurveConstructionError(f"Knot times must be strictly increasing: {self.times}")
         if any(df <= 0.0 for df in self.dfs):
             raise CurveConstructionError(f"Discount factors must be positive: {self.dfs}")
+        horizon = self.times[-1] if self.covered_horizon is None else self.covered_horizon
+        if not math.isfinite(horizon) or not 0.0 < horizon <= self.times[-1]:
+            raise CurveConstructionError(
+                f"covered_horizon must lie in (0, last knot {self.times[-1]}], "
+                f"got {self.covered_horizon!r}"
+            )
+        object.__setattr__(self, "covered_horizon", horizon)
         knots = (0.0, *self.times)
         logs = (0.0, *(math.log(df) for df in self.dfs))
         object.__setattr__(self, "_knots", knots)
@@ -143,7 +172,12 @@ class InterpolatedDiscountCurve:
     # --- interpolation internals ----------------------------------------------
 
     def _log_df_at(self, t: float) -> float:
-        """Log discount factor at any ``t > 0``, flat in the zero rate outside the knots."""
+        """Log discount factor at any ``t > 0``.
+
+        Outside the knots the curve extrapolates flat in the zero rate: an
+        unobservable (Level 3) modelling rule, not observed market data — see
+        the module docstring.
+        """
         if t <= self.times[0]:
             return -self._zero_rates[0] * t
         if t >= self.times[-1]:
@@ -198,6 +232,25 @@ class InterpolatedDiscountCurve:
         # already known at the knot; only the part inside the interval needs integrating.
         integral = dt * (fd[i] * x + _region_integral(f[i - 1] - fd[i], f[i] - fd[i], x))
         return self._logs[i - 1] - integral
+
+
+def overlay_curve(
+    canonical: InterpolatedDiscountCurve, method: InterpMethod
+) -> InterpolatedDiscountCurve:
+    """Re-interpolate the canonical knots with a comparative scheme.
+
+    The overlay shares the canonical curve's nodes and covered horizon. It is
+    not claimed to reprice the input quotes: its final quote residuals are
+    measured with ``yieldcurve.curves.bootstrap.repricing_report`` and are
+    expected to be nonzero where payments fall between knots.
+    """
+    return InterpolatedDiscountCurve(
+        reference_date=canonical.reference_date,
+        times=canonical.times,
+        dfs=canonical.dfs,
+        method=method,
+        covered_horizon=canonical.covered_horizon,
+    )
 
 
 def _monotone_convex_forwards(

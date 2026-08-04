@@ -29,6 +29,13 @@ class DiscountCurve(Protocol):
 
     ``t`` is always ACT/365F years from ``reference_date``; ``zero`` and ``fwd``
     return continuously compounded rates.
+
+    Curves backed by discrete quoted inputs additionally expose
+    ``covered_horizon``: the largest curve time up to which quoted inputs exist.
+    Beyond it every value is extrapolated and is an unobservable (Level 3)
+    input, so consumers should treat the extrapolated region as a modelling
+    choice rather than market data. ``InterpolatedDiscountCurve`` implements it;
+    analytic curves such as ``FlatCurve`` are defined for all times.
     """
 
     @property
