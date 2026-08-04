@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.models._quantlib_oracle import quantlib_normal_vol
 from yieldcurve.curves.build import usd_ois_curve
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
 from yieldcurve.instruments import Swaption
@@ -35,92 +36,6 @@ _TRUE_SIGMA = 0.011
 def ql():  # type: ignore[no-untyped-def]
     """QuantLib is the independent pricing oracle; it is test-only."""
     return pytest.importorskip("QuantLib")
-
-
-def _quantlib_normal_vol(ql, curve, swaption, a, sigma, asof) -> float:  # type: ignore[no-untyped-def]
-    """Market normal vol for ``swaption`` from QuantLib's Hull-White engine.
-
-    The swaption NPV comes from QuantLib's Jamshidian engine; the conversion to
-    an undiscounted normal vol uses the textbook Bachelier formula with
-    QuantLib's own fair swap rate. The resulting quote is independent of this
-    repository's Hull-White implementation.
-    """
-    from scipy.optimize import brentq
-    from scipy.stats import norm as scipy_norm
-
-    from yieldcurve.curves.pricing import annuity
-    from yieldcurve.curves.protocol import curve_time
-
-    ql_date = ql.Date(asof.day, asof.month, asof.year)
-    ql.Settings.instance().evaluationDate = ql_date
-    handle = ql.YieldTermStructureHandle(
-        ql.FlatForward(ql_date, 0.03, ql.Actual365Fixed(), ql.Continuous)
-    )
-    calendar = ql.UnitedStates(ql.UnitedStates.GovernmentBond)
-    start = ql.Date(swaption.expiry.day, swaption.expiry.month, swaption.expiry.year)
-    end = ql.Date(
-        swaption.swap.maturity.day, swaption.swap.maturity.month, swaption.swap.maturity.year
-    )
-
-    def _schedule(tenor):  # type: ignore[no-untyped-def]
-        return ql.Schedule(
-            start,
-            end,
-            tenor,
-            calendar,
-            ql.ModifiedFollowing,
-            ql.ModifiedFollowing,
-            ql.DateGeneration.Backward,
-            False,
-        )
-
-    index = ql.IborIndex(
-        "Float3M",
-        ql.Period(3, ql.Months),
-        0,
-        ql.USDCurrency(),
-        calendar,
-        ql.ModifiedFollowing,
-        False,
-        ql.Actual360(),
-        handle,
-    )
-    swap = ql.VanillaSwap(
-        ql.VanillaSwap.Payer,
-        1.0,
-        _schedule(ql.Period(ql.Semiannual)),  # type: ignore[no-untyped-call]
-        swaption.strike,
-        ql.Thirty360(ql.Thirty360.BondBasis),
-        _schedule(ql.Period(3, ql.Months)),  # type: ignore[no-untyped-call]
-        index,
-        0.0,
-        ql.Actual360(),
-    )
-    theirs = ql.Swaption(swap, ql.EuropeanExercise(start))
-    theirs.setPricingEngine(ql.JamshidianSwaptionEngine(ql.HullWhite(handle, a, sigma), handle))
-
-    # the forward is a plain curve quantity; QuantLib's own fairRate() cannot
-    # be queried on an engine-less swap in this build, so ours stands in
-    from yieldcurve.curves.pricing import par_rate
-
-    forward = par_rate(swaption.swap, CurveSet.single(curve), asof)
-    expiry = curve_time(asof, swaption.expiry)
-    strike = float(swaption.strike)
-
-    def _bachelier(v: float) -> float:
-        moneyness = forward - strike
-        s = v * math.sqrt(expiry)
-        d = moneyness / s
-        return moneyness * float(scipy_norm.cdf(d)) + s * float(scipy_norm.pdf(d))
-
-    undiscounted = float(theirs.NPV()) / (
-        float(swaption.swap.notional) * annuity(swaption.swap, CurveSet.single(curve), asof)
-    )
-    intrinsic = max(forward - strike, 0.0)
-    if undiscounted <= intrinsic:
-        return 0.0
-    root = brentq(lambda v: _bachelier(v) - undiscounted, 1e-12, 1.0, xtol=1e-14)
-    return float(root)
 
 
 def test_calibration_recovers_parameters_planted_by_quantlib(ql) -> None:  # type: ignore[no-untyped-def]
@@ -310,7 +225,7 @@ def _synthetic_grid(
         )
         for expiry, maturity in expiry_maturity
     )
-    vols = tuple(_quantlib_normal_vol(ql, curve, s, _TRUE_A, _TRUE_SIGMA, ASOF) for s in swaptions)
+    vols = tuple(quantlib_normal_vol(ql, curve, s, _TRUE_A, _TRUE_SIGMA, ASOF) for s in swaptions)
 
     return swaptions, vols
 

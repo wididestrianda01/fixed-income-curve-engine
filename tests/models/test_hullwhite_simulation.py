@@ -84,9 +84,15 @@ def test_different_seeds_give_different_paths(model: HullWhite) -> None:
 
 
 @pytest.mark.parametrize("n_paths", [10_000, 40_000, 160_000])
-def test_monte_carlo_bond_price_converges_to_the_analytic_price(
+def test_monte_carlo_bond_price_agrees_with_the_analytic_price_within_monte_carlo_error(
     model: HullWhite, n_paths: int
 ) -> None:
+    # The monthly path-discount approximation carries an O(step^2) bias
+    # (~2.9e-7 on this fixture), so the estimator converges to the trapezoid
+    # expectation, not to the exact analytic bond price. The bias is ~1000x
+    # below the 3-SE window here, so the estimate agrees with the analytic
+    # price within Monte Carlo error; the bias itself is measured
+    # deterministically in the time-step bias tests below.
     estimates = model.simulate_path_discount_factors(0.0, 5.0, n_paths=n_paths, seed=SEED)
     analytic = model.curve.df(5.0)
 

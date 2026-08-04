@@ -8,12 +8,13 @@ from datetime import date
 import numpy as np
 import pytest
 
+from tests.models._quantlib_oracle import quantlib_jamshidian_npv, quantlib_normal_vol
 from yieldcurve.calendars import USGovernmentBondCalendar
 from yieldcurve.conventions import BusinessDayConvention, DayCount
 from yieldcurve.curves.pricing import par_rate
 from yieldcurve.curves.protocol import CurveSet, FlatCurve
 from yieldcurve.instruments import Swaption, VanillaSwap
-from yieldcurve.models.hullwhite import HullWhite, ModelError
+from yieldcurve.models.hullwhite import HullWhite, ModelError, SwaptionStrikeError
 
 ASOF = date(2026, 7, 24)
 SEED = 20260727
@@ -130,85 +131,17 @@ def test_swaption_matches_a_monte_carlo_estimate(model: HullWhite, curves: Curve
     assert abs(analytic - estimates.mean()) < 4 * standard_error
 
 
-def test_normal_vol_matches_an_independent_quantlib_price(
-    model: HullWhite, curves: CurveSet
-) -> None:
+def test_normal_vol_matches_an_independent_quantlib_price(model: HullWhite) -> None:
     """The model vol is checked against QuantLib's Hull-White engine.
 
     A same-model round trip cannot detect a systematic pricing error, so the
     market-implied normal vol is rebuilt from QuantLib's Jamshidian NPV and the
-    textbook Bachelier inversion instead.
+    Bachelier inversion instead.
     """
     ql = pytest.importorskip("QuantLib")
 
-    from scipy.optimize import brentq
-    from scipy.stats import norm as scipy_norm
-
-    from yieldcurve.curves.pricing import annuity, par_rate
-    from yieldcurve.curves.protocol import curve_time
-
-    strike = 0.03
-    swaption = _swaption(strike)
-    a, sigma = model.a, model.sigma
-
-    asof = ql.Date(24, 7, 2026)
-    ql.Settings.instance().evaluationDate = asof
-    handle = ql.YieldTermStructureHandle(
-        ql.FlatForward(asof, 0.03, ql.Actual365Fixed(), ql.Continuous)
-    )
-    calendar = ql.UnitedStates(ql.UnitedStates.GovernmentBond)
-    start, end = ql.Date(24, 7, 2028), ql.Date(24, 7, 2033)
-
-    def _schedule(tenor):  # type: ignore[no-untyped-def]
-        return ql.Schedule(
-            start,
-            end,
-            tenor,
-            calendar,
-            ql.ModifiedFollowing,
-            ql.ModifiedFollowing,
-            ql.DateGeneration.Backward,
-            False,
-        )
-
-    index = ql.IborIndex(
-        "Float3M",
-        ql.Period(3, ql.Months),
-        0,
-        ql.USDCurrency(),
-        calendar,
-        ql.ModifiedFollowing,
-        False,
-        ql.Actual360(),
-        handle,
-    )
-    swap = ql.VanillaSwap(
-        ql.VanillaSwap.Payer,
-        1.0,
-        _schedule(ql.Period(ql.Semiannual)),  # type: ignore[no-untyped-call]
-        strike,
-        ql.Thirty360(ql.Thirty360.BondBasis),
-        _schedule(ql.Period(3, ql.Months)),  # type: ignore[no-untyped-call]
-        index,
-        0.0,
-        ql.Actual360(),
-    )
-    theirs = ql.Swaption(swap, ql.EuropeanExercise(start))
-    theirs.setPricingEngine(ql.JamshidianSwaptionEngine(ql.HullWhite(handle, a, sigma), handle))
-
-    # the forward is a plain curve quantity; QuantLib's own fairRate() cannot
-    # be queried on an engine-less swap in this build, so ours stands in
-    forward = par_rate(swaption.swap, curves, ASOF)
-    expiry = curve_time(ASOF, swaption.expiry)
-    undiscounted = theirs.NPV() / (swaption.swap.notional * annuity(swaption.swap, curves, ASOF))
-
-    def _bachelier(v: float) -> float:
-        moneyness = forward - strike
-        s = v * math.sqrt(expiry)
-        d = moneyness / s
-        return moneyness * float(scipy_norm.cdf(d)) + s * float(scipy_norm.pdf(d))
-
-    independent_vol = float(brentq(lambda v: _bachelier(v) - undiscounted, 1e-12, 1.0, xtol=1e-14))
+    swaption = _swaption(0.03)
+    independent_vol = quantlib_normal_vol(ql, model.curve, swaption, model.a, model.sigma, ASOF)
 
     ours = model.swaption_normal_vol(swaption, ASOF)
 
@@ -226,8 +159,6 @@ def test_a_deeply_out_of_the_money_swaption_is_near_zero_but_positive(
 def test_a_swaption_with_a_strike_different_from_the_swap_fixed_rate_is_rejected(
     model: HullWhite,
 ) -> None:
-    from yieldcurve.models.hullwhite import SwaptionStrikeError
-
     swaption = _swaption(0.03)
     mismatched = Swaption(expiry=swaption.expiry, swap=swaption.swap, strike=0.04, pay_fixed=True)
 
@@ -277,55 +208,10 @@ def test_quantlib_swaption_parity() -> None:
 
     a, sigma, strike = 0.05, 0.01, 0.03
 
-    asof = ql.Date(24, 7, 2026)
-    ql.Settings.instance().evaluationDate = asof
-
-    handle = ql.YieldTermStructureHandle(
-        ql.FlatForward(asof, 0.03, ql.Actual365Fixed(), ql.Continuous)
-    )
-
-    calendar = ql.UnitedStates(ql.UnitedStates.GovernmentBond)
-    start, end = ql.Date(24, 7, 2028), ql.Date(24, 7, 2033)
-
-    def _schedule(tenor):  # type: ignore[no-untyped-def]
-        return ql.Schedule(
-            start,
-            end,
-            tenor,
-            calendar,
-            ql.ModifiedFollowing,
-            ql.ModifiedFollowing,
-            ql.DateGeneration.Backward,
-            False,
-        )
-
-    index = ql.IborIndex(
-        "Float3M",
-        ql.Period(3, ql.Months),
-        0,
-        ql.USDCurrency(),
-        calendar,
-        ql.ModifiedFollowing,
-        False,
-        ql.Actual360(),
-        handle,
-    )
-    swap = ql.VanillaSwap(
-        ql.VanillaSwap.Payer,
-        1.0,
-        _schedule(ql.Period(ql.Semiannual)),  # type: ignore[no-untyped-call]
-        strike,
-        ql.Thirty360(ql.Thirty360.BondBasis),
-        _schedule(ql.Period(3, ql.Months)),  # type: ignore[no-untyped-call]
-        index,
-        0.0,
-        ql.Actual360(),
-    )
-    theirs = ql.Swaption(swap, ql.EuropeanExercise(start))
-    theirs.setPricingEngine(ql.JamshidianSwaptionEngine(ql.HullWhite(handle, a, sigma), handle))
+    theirs = quantlib_jamshidian_npv(ql, _swaption(strike), a, sigma, ASOF)
 
     ours = HullWhite(curve=FlatCurve(reference_date=ASOF, rate=0.03), a=a, sigma=sigma).swaption(
         _swaption(strike), ASOF
     )
 
-    assert ours == pytest.approx(theirs.NPV(), abs=1e-4)
+    assert ours == pytest.approx(theirs, abs=1e-4)

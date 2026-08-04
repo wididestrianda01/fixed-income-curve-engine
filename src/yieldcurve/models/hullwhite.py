@@ -59,11 +59,18 @@ _SIGMA_BOUNDS = (1e-5, 0.20)
 _MAX_START_SENSITIVITY = 0.25
 _SENSITIVITY_STARTS = ((0.5, 1.0), (2.0, 1.0), (1.0, 0.5), (1.0, 2.0))
 
+# Optimizer tolerances: the initial fit is converged tightly, while the
+# start-sensitivity refits only probe the solution's location, so they run
+# with a looser tolerance.
+_FIT_TOL_TIGHT = 1e-14
+_FIT_TOL_PROBE = 1e-10
+
 # Initial bracket for the Jamshidian root and the cap on dynamic widening.
 _JAMSHIDIAN_BRACKET = (-0.50, 1.00)
 _JAMSHIDIAN_MAX_DOUBLINGS = 100
 
-_DATASET_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+# Matched with re.fullmatch, so the pattern needs no ^...$ anchors.
+_DATASET_NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 
 class ModelError(ValueError):
@@ -355,11 +362,14 @@ class HullWhite:
 def _jamshidian_root(swap_value: Callable[[float], float], swaption: Swaption) -> float:
     """Solve swap_value(r) = 0 with robust dynamic bracketing.
 
-    For non-negative cash-flow coefficients the swap value is strictly
-    increasing in the short rate, so when both bracket endpoints share a sign
-    the root lies beyond the endpoint with the smaller-magnitude value. The
-    bracket is widened by doubling until a sign change appears, capped at
-    ``_JAMSHIDIAN_MAX_DOUBLINGS`` widenings.
+    For non-negative cash-flow coefficients the swap value is monotone
+    (weakly) increasing in the short rate: strictly so except in the
+    degenerate case where a cash flow falls exactly at the option expiry,
+    whose zero-coupon bond has B = 0 and is therefore constant in r. So when
+    both bracket endpoints share a sign the root lies beyond the endpoint
+    with the smaller-magnitude value. The bracket is widened by doubling
+    until a sign change appears, capped at ``_JAMSHIDIAN_MAX_DOUBLINGS``
+    widenings.
     """
     lo, hi = _JAMSHIDIAN_BRACKET
     f_lo, f_hi = swap_value(lo), swap_value(hi)
@@ -432,7 +442,7 @@ def calibrate(
             ftol=tolerance,
         )
 
-    fit = run(initial, 1e-14)
+    fit = run(initial, _FIT_TOL_TIGHT)
     if not fit.success:
         raise CalibrationError(
             f"calibration optimizer did not converge: {fit.message!r} "
@@ -475,7 +485,7 @@ def calibrate(
             lo,
             hi,
         )
-        refit = run((float(start[0]), float(start[1])), 1e-10)
+        refit = run((float(start[0]), float(start[1])), _FIT_TOL_PROBE)
         if not refit.success:
             sensitivity = float("inf")
             break
