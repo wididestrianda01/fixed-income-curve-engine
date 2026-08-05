@@ -16,7 +16,7 @@ from yieldcurve.curves.interpolation import InterpMethod
 from yieldcurve.curves.parametric import FitError, Svensson
 from yieldcurve.curves.protocol import curve_time
 
-_METHOD_NAMES = {
+METHOD_LABELS = {
     InterpMethod.MONOTONE_CONVEX: "Monotone convex (comparative overlay)",
     InterpMethod.CUBIC_LOG_DF: "Cubic log-DF (comparative overlay)",
     InterpMethod.LOG_LINEAR_DF: "Log-linear DF (canonical calibration)",
@@ -42,9 +42,9 @@ def render(state: AppState) -> None:
 
     selected = st.multiselect(
         "Interpolation methods to overlay",
-        options=list(_METHOD_NAMES),
-        default=list(_METHOD_NAMES),
-        format_func=lambda m: _METHOD_NAMES[m],
+        options=list(METHOD_LABELS),
+        default=list(METHOD_LABELS),
+        format_func=lambda m: METHOD_LABELS[m],
         help=(
             "Log-linear DF is the package's canonical calibration. Cubic log-DF and "
             "monotone convex are comparative overlays built on the same knots; their "
@@ -61,7 +61,7 @@ def render(state: AppState) -> None:
     pillars = sorted(curve_time(state.asof, q.instrument.maturity) for q in quotes)  # type: ignore[attr-defined]
 
     zeros = {
-        _METHOD_NAMES[m]: (_GRID.tolist(), [c.zero(float(t)) * 100.0 for t in _GRID])
+        METHOD_LABELS[m]: (_GRID.tolist(), [c.zero(float(t)) * 100.0 for t in _GRID])
         for m, c in curves.items()
     }
     st.plotly_chart(
@@ -74,7 +74,7 @@ def render(state: AppState) -> None:
     )
 
     forwards = {
-        _METHOD_NAMES[m]: (
+        METHOD_LABELS[m]: (
             _GRID.tolist(),
             [c.fwd(float(t), float(t) + _FORWARD_TENOR) * 100.0 for t in _GRID],
         )
@@ -97,7 +97,7 @@ def render(state: AppState) -> None:
 
     grid_data: dict[str, list[float]] = {"Maturity (y)": _GRID.tolist()}
     for m in selected:
-        label = _METHOD_NAMES[m]
+        label = METHOD_LABELS[m]
         curve = curves[m]
         grid_data[f"Zero (%) — {label}"] = [curve.zero(float(t)) * 100.0 for t in _GRID]
         grid_data[f"3M fwd (%) — {label}"] = [
@@ -111,22 +111,22 @@ def render(state: AppState) -> None:
             f"{type(q.instrument).__name__} {q.instrument.maturity:%Y-%m-%d}"
             for q in quotes  # type: ignore[attr-defined]
         ],
-        "Target rate": [q.rate for q in quotes],
+        "Target rate (decimal)": [q.rate for q in quotes],
     }
     for m in selected:
         report = repricing_report(curves[m], quotes, state.asof)
-        residual_rows[f"Model rate — {_METHOD_NAMES[m]}"] = [r.model_rate for r in report]
-        residual_rows[f"Residual (bp) — {_METHOD_NAMES[m]}"] = [r.residual * _BP for r in report]
+        residual_rows[f"Model rate (decimal) — {METHOD_LABELS[m]}"] = [r.model_rate for r in report]
+        residual_rows[f"Residual (bp) — {METHOD_LABELS[m]}"] = [r.residual * _BP for r in report]
     st.markdown(
         "**Quote-repricing residuals** — each selected method's final model quote "
         "against its target."
     )
     st.dataframe(pd.DataFrame(residual_rows), use_container_width=True, hide_index=True)
     st.caption(
-        "Residual is model minus target rate, in basis points. The canonical log-linear "
-        "build stays within the documented 1e-6 bp tolerance for every quote; the "
-        "comparative overlays leave measured residuals wherever a payment falls between "
-        "knots."
+        "Target and model rates are decimal rates (0.05 = 5%); residual is model "
+        "minus target, in basis points. The canonical log-linear build stays within "
+        "the documented 1e-6 bp tolerance for every quote; the comparative overlays "
+        "leave measured residuals wherever a payment falls between knots."
     )
 
     if show_svensson:

@@ -273,6 +273,50 @@ def test_known_domain_errors_are_sanitized_and_logged(
     assert "/home/alice/.cache/yieldcurve/data/demo_portfolio.toml" in caplog.text
 
 
+def test_krd_failure_degrades_to_an_info_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero-PV instrument (par swap) makes normalized KRD undefined: the Risk
+    tab must explain via st.info and keep rendering — never raise."""
+    import app.tabs.risk as risk_mod
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise ValueError("normalized KRD is undefined for a zero-PV instrument")
+
+    monkeypatch.setattr(risk_mod, "krd", _boom)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    assert len(at.exception) == 0
+    rendered = " ".join(i.value for i in at.info)
+    assert "Key-rate duration is undefined" in rendered
+    assert "par swap" in rendered
+    # the tab continues past the guard: the par-rate ladder section still renders
+    captions = " ".join(c.value for c in at.caption)
+    assert "par-rate ladder" in captions
+
+
+def test_svensson_fit_failure_degrades_to_a_warning_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rejected Svensson fit must degrade to an st.warning and skip the fit
+    section — the bootstrapped curve stands alone, the tab does not crash."""
+    import app.tabs.curve as curve_mod
+    from yieldcurve.curves.parametric import FitError
+
+    class _RejectedFit:
+        @classmethod
+        def fit(cls, *args: object, **kwargs: object) -> object:
+            raise FitError("optimizer did not converge")
+
+    monkeypatch.setattr(curve_mod, "Svensson", _RejectedFit)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    assert len(at.exception) == 0
+    rendered = " ".join(w.value for w in at.warning)
+    assert "The Svensson fit was rejected" in rendered
+    assert "skipped rather than reported" in rendered
+
+
 def test_sanitizer_preserves_percent_fractions() -> None:
     """Percentages survive: ``%`` is a token boundary, so the POSIX-prefix
     branch must not eat ``/20`` out of ``10%/20%`` — while real paths still mask."""

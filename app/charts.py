@@ -1,10 +1,11 @@
 """Plotly helpers. Presentation only — no number is computed here.
 
 One shared chart template and one semantic palette replace isolated defaults.
-Line dash and markers supplement colour, so series stay distinguishable in
-monochrome and for colour-blind readers; every axis carries its units, set by
-the tab that owns the number's meaning. Material charts pair these figures
-with an expandable data table and a concise text result in the calling tab.
+Line dash on curves and value text on bars supplement colour, so series stay
+distinguishable in monochrome and for colour-blind readers; every axis carries
+its units, set by the tab that owns the number's meaning. Material charts pair
+these figures with an expandable data table and a concise text result in the
+calling tab.
 """
 
 from __future__ import annotations
@@ -38,19 +39,17 @@ ADVERSE: str = PALETTE[1]
 _PILLAR_COLOR = "#9e9e9e"
 
 _LINE_DASHES: tuple[str, ...] = ("solid", "dash", "dot", "longdash")
-_MARKERS: tuple[str, ...] = ("circle", "square", "diamond", "triangle-up")
 
 
 def series_style(index: int) -> dict[str, str]:
-    """Colour plus line dash plus marker symbol for series ``index``.
+    """Colour plus line dash for series ``index``.
 
-    Colour is never the only encoding: dash and marker pattern repeat in the
-    same cycle, so adjacent series stay distinct when printed in monochrome.
+    Colour is never the only encoding: the dash pattern repeats in the same
+    cycle, so adjacent series stay distinct when printed in monochrome.
     """
     return {
         "color": PALETTE[index % len(PALETTE)],
         "dash": _LINE_DASHES[index % len(_LINE_DASHES)],
-        "symbol": _MARKERS[index % len(_MARKERS)],
     }
 
 

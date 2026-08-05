@@ -182,7 +182,7 @@ def _section_c(state: AppState) -> None:
 
     worst_name = min(ladder, key=lambda name: ladder[name])
     worst = ladder[worst_name]
-    st.metric("Worst-case illustrative ΔEVE (SEK)", f"{worst:,.0f} SEK")
+    st.metric("Worst-case illustrative ΔEVE (SEK)", f"{worst:,.0f}")
     st.caption(f"Under the {worst_name} scenario.")
 
     threshold = -_OUTLIER_FRACTION * TIER1_CAPITAL

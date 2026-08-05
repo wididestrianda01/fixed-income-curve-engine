@@ -18,8 +18,8 @@ import streamlit as st
 from app.data import SNAPSHOT_DATE, load_snapshot
 from app.state import AppState
 from app.tabs import beyond, curve, pricing, risk
+from app.tabs.curve import METHOD_LABELS
 from yieldcurve.curves.build import CurveDataError
-from yieldcurve.curves.interpolation import InterpMethod
 from yieldcurve.curves.parametric import FitError
 from yieldcurve.curves.protocol import MissingFixingError
 from yieldcurve.market.snapshot import MissingDatasetError
@@ -75,12 +75,6 @@ _PATH_TOKEN = re.compile(
     r")"
 )
 
-_METHOD_LABELS = {
-    InterpMethod.MONOTONE_CONVEX: "Monotone convex (comparative overlay)",
-    InterpMethod.CUBIC_LOG_DF: "Cubic on log discount factors (comparative overlay)",
-    InterpMethod.LOG_LINEAR_DF: "Log-linear on discount factors (canonical calibration)",
-}
-
 
 def _sanitize(text: str) -> str:
     """Remove path-like tokens so no local filesystem location reaches the browser."""
@@ -98,8 +92,8 @@ def build_sidebar() -> AppState:
     )
     method = st.sidebar.selectbox(
         "Interpolation method (all tabs)",
-        options=list(_METHOD_LABELS),
-        format_func=lambda m: _METHOD_LABELS[m],
+        options=list(METHOD_LABELS),
+        format_func=lambda m: METHOD_LABELS[m],
         help=(
             "Global: every curve in every tab is rebuilt with this method. The package's "
             "canonical calibration is log-linear on discount factors; monotone convex and "
@@ -109,9 +103,9 @@ def build_sidebar() -> AppState:
     )
     st.sidebar.caption(
         "Monotone convex gives continuous forwards but is not linear in its inputs, so "
-        "risk ladders built under it do not add up exactly (about 1.4% on this book); "
-        "log-linear and cubic do add up. The canonical build is log-linear on discount "
-        "factors."
+        "risk ladders built under it are additive only to about 1.4% on this book; "
+        "log-linear and cubic are additive to about 1e-4. The canonical build is "
+        "log-linear on discount factors."
     )
     load_snapshot()  # fail fast: validate the packaged snapshot before any tab renders
     return AppState(asof=SNAPSHOT_DATE, method=method)

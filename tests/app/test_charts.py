@@ -1,7 +1,7 @@
 """Unit tests for the shared chart template and semantic palette.
 
 AppTest does not expose the serialized Plotly figures, so the presentation
-contract — axis units, colour + dash + marker supplement, pillar markers,
+contract — axis units, colour + dash supplement, pillar markers,
 value text on bars — is pinned directly on the figure objects the tabs render.
 """
 
@@ -17,14 +17,13 @@ from app.charts import (
 )
 
 
-def test_series_style_cycles_colour_dash_and_marker() -> None:
+def test_series_style_cycles_colour_and_dash() -> None:
     first, second = series_style(0), series_style(1)
     assert first["color"] == PALETTE[0]
     assert PALETTE[1] == ADVERSE
-    # colour is never the only encoding: dash and marker repeat in the same cycle
+    # colour is never the only encoding: the dash pattern repeats in the same cycle
     assert first["color"] != second["color"]
     assert first["dash"] != second["dash"]
-    assert first["symbol"] != second["symbol"]
 
 
 def test_overlay_figure_uses_the_shared_template_and_distinct_styles() -> None:
