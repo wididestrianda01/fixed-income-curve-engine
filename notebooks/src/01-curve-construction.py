@@ -24,14 +24,15 @@
 #
 # ## Data
 #
-# Two Riksbank series, frozen into the committed, read-only snapshot
-# `data/snapshots/2026-07-24/` (observation and retrieval dates, series
-# identifiers and transformations are recorded in `DATA_SOURCES.md`):
+# Two Riksbank series, frozen into the committed, read-only snapshot shipped
+# as packaged resources under `src/yieldcurve/data/` (observation and
+# retrieval dates, series identifiers and transformations are recorded in
+# `DATA_SOURCES.md`):
 #
 # | File | Series | Instruments |
 # |---|---|---|
 # | `riksbank_bills.csv` | SETB1MBENCHC, SETB3MBENCH, SETB6MBENCH | Treasury bills, 1M / 3M / 6M |
-# | `riksbank_gov_benchmarks.csv` | SEGVB2Y, SEGVB5Y, SEGVB7Y, SEGVB10Y | Government benchmark
+# | `riksbank_gov_benchmarks.csv` | SEGVB2YC, SEGVB5YC, SEGVB7YC, SEGVB10YC | Government benchmark
 # yields |
 #
 # Nothing in this notebook fetches data: it reads the packaged snapshot only.

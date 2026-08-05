@@ -18,7 +18,7 @@
 # ## Data
 #
 # **Snapshot date:** 24 July 2026. All market data come from the committed
-# snapshot in `data/snapshots/2026-07-24/`.
+# snapshot shipped as packaged resources under `src/yieldcurve/data/`.
 #
 # **Test instrument:** 10-year US Treasury bond with the following
 # characteristics:
@@ -523,10 +523,12 @@ print("   with face, so half the face means half the risk)")
 # - **Small positive KRDs at the intermediate keys** (0.5y to 7y): these
 #   carry the coupons. Their magnitudes track the coupon cash-flow sizes.
 # - **Zero KRDs at the 0.25y and 30y keys**, and essentially zero at 20y:
-#   the hat at 0.25y vanishes at the first coupon date (0.5y), and the hats
-#   at 20y/30y only move rates beyond the bond's 10-year maturity, which
-#   affects none of its cash flows. The 20y hat still catches a small
-#   weight through hat-grid interpolation at the 10y boundary.
+#   the hat at 0.25y vanishes at the first coupon date (0.5y), and the 30y
+#   hat only moves rates beyond the 10-year key, which affects none of the
+#   bond's cash flows. The 20y hat is the exception: the redemption lands at
+#   curve time 3653/365 = 10.0082y (ACT/365F, three days past the 10-year
+#   key), inside the 20y hat's left ramp, so hat-grid interpolation picks up
+#   a small weight there — the 0.0056 y in the table.
 #
 # ### The EU 2024/856 scenario ranking
 #

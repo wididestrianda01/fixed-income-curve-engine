@@ -27,9 +27,9 @@
 # ## Data
 #
 # Identical to notebook 01: three Riksbank treasury bill quotes and four government
-# benchmark yields from the committed snapshot `data/snapshots/2026-07-24/`.
-# Nothing about the input changes between the three curves below. Only the rule for
-# filling the gaps changes.
+# benchmark yields from the committed snapshot shipped as packaged resources under
+# `src/yieldcurve/data/`. Nothing about the input changes between the three curves
+# below. Only the rule for filling the gaps changes.
 #
 # ## Theory
 #

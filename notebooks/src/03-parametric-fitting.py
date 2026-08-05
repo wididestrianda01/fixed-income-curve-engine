@@ -34,7 +34,8 @@
 #
 # ## Data
 #
-# One dataset, from the snapshot committed at `data/snapshots/2026-07-24/`:
+# One dataset, from the snapshot committed as packaged resources under
+# `src/yieldcurve/data/`:
 #
 # - `ecb_spot_curve`: 14 zero rates, 1 to 30 years, from the ECB's AAA-rated euro
 #   area government bond yield curve. Continuously compounded, so they feed the
