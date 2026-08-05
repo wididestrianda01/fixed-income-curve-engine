@@ -175,10 +175,14 @@ def test_notebooks_make_no_network_calls(path: Path) -> None:
         assert forbidden not in source
 
 
-def test_notebook_conftest_puts_the_netblock_on_kernel_pythonpath() -> None:
+def test_notebook_conftest_puts_the_netblock_on_kernel_pythonpath(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The nbmake run must execute kernels offline: notebooks/conftest.py puts
     notebooks/_netblock (its sitecustomize) on PYTHONPATH before any kernel is
-    spawned. Importing the conftest applies its real side effect."""
+    spawned. Importing the conftest applies its real side effect; monkeypatch
+    snapshots PYTHONPATH first so that side effect stays scoped to this test."""
+    monkeypatch.setenv("PYTHONPATH", os.environ.get("PYTHONPATH", ""))
     conftest = REPO_ROOT / "notebooks" / "conftest.py"
     spec = importlib.util.spec_from_file_location("notebooks_conftest", conftest)
     assert spec is not None and spec.loader is not None

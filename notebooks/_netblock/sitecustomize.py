@@ -15,6 +15,16 @@ design demands — no notebook code can reach the network — and it lets the
 kernel run. ``ssl`` is imported first because it subclasses
 ``socket.socket`` at import time.
 
+Name resolution is blocked along with connections (``getaddrinfo``,
+``gethostbyname``, ``gethostbyname_ex``, ``gethostbyaddr``, ``getnameinfo``),
+so no DNS query can leak.
+
+This is a strong guard for offline execution, not a security boundary: the
+Python ``socket`` module is only one of several paths to the network, and
+deliberate bypasses — ``os.connect``, the private ``_socket`` module, raw
+``ctypes`` against libc — are out of scope for a kernel-side guard. The block
+enforces an execution convention (TQ-09); it does not sandbox the process.
+
 The block mirrors the in-process fixture in ``tests/test_offline.py``
 (``patch("socket.socket", side_effect=RuntimeError(...))``): the fixture can
 forbid creation because ``ssl`` and asyncio are already initialized in the
@@ -48,10 +58,17 @@ class _BlockedSocket(socket.socket):
         raise RuntimeError("network call blocked (offline notebook execution)")
 
 
-def _blocked_getaddrinfo(*args: object, **kwargs: object) -> object:
+def _blocked_resolution(*args: object, **kwargs: object) -> object:
     """Refuse name resolution so no DNS query can leak either."""
     raise RuntimeError("network call blocked (offline notebook execution)")
 
 
 socket.socket = _BlockedSocket  # type: ignore[assignment]
-socket.getaddrinfo = _blocked_getaddrinfo  # type: ignore[assignment]
+for _name in (
+    "getaddrinfo",
+    "gethostbyname",
+    "gethostbyname_ex",
+    "gethostbyaddr",
+    "getnameinfo",
+):
+    setattr(socket, _name, _blocked_resolution)
