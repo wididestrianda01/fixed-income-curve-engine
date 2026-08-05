@@ -8,7 +8,10 @@ until then each tab's anchor is recomputed from the library in the test itself.
 
 from __future__ import annotations
 
+import importlib.util
 from datetime import date
+from pathlib import Path
+from typing import cast
 
 import pytest
 from streamlit.testing.v1 import AppTest
@@ -27,6 +30,17 @@ def app() -> AppTest:
 
 def _labels(at: AppTest) -> set[str]:
     return {m.label for m in at.metric}
+
+
+def _app_sanitize(text: str) -> str:
+    """Run app.py's path sanitizer. ``import app`` resolves to the app/ package,
+    so the entry-point script is loaded under a distinct module name instead."""
+    path = Path(__file__).resolve().parents[2] / APP
+    spec = importlib.util.spec_from_file_location("app_entry_point", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return cast(str, module._sanitize(text))
 
 
 def test_the_app_starts_without_raising(app: AppTest) -> None:
@@ -245,6 +259,25 @@ def test_known_domain_errors_are_sanitized_and_logged(
     assert "/home/alice" not in rendered
     assert "demo_portfolio.toml" not in rendered
     assert "/home/alice/.cache/yieldcurve/data/demo_portfolio.toml" in caplog.text
+
+
+def test_sanitizer_preserves_percent_fractions() -> None:
+    """Percentages survive: ``%`` is a token boundary, so the POSIX-prefix
+    branch must not eat ``/20`` out of ``10%/20%`` — while real paths still mask."""
+    for text in ("10%/20%", "50%/50%", "shift of 10%/20%"):
+        assert _app_sanitize(text) == text, text
+    assert _app_sanitize("read /tmp/cache.toml") == "read [path]"
+    assert _app_sanitize("open data/demo_portfolio.toml") == "open [path]"
+    assert _app_sanitize("C:\\Users\\me\\x.toml") == "[path]"
+
+
+def test_sanitizer_leaves_currency_shaped_relative_paths() -> None:
+    """Documented trade-off: ``ABC/def.toml`` is not stripped. The leading
+    three-uppercase-letter component is excluded as a currency pair (USD/SEK),
+    and that exclusion shields this genuine-looking relative path too. Accepted:
+    the sanitizer must not mangle currency text, and the rare ABC/<file> shape
+    pays that cost."""
+    assert _app_sanitize("ABC/def.toml") == "ABC/def.toml"
 
 
 def test_hull_white_calibration_second_request_is_a_cache_hit(
