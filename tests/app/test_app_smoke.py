@@ -529,8 +529,9 @@ def test_hull_white_calibration_second_request_is_a_cache_hit(
 def test_expensive_calibration_is_cached_and_the_method_control_is_global(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Hidden-tab work: a rerun without changes reuses the cached calibration,
-    and the sidebar interpolation control reaches the Risk tab (global scope)."""
+    """Hidden-tab work: the app opens on the canonical log-linear method, a
+    rerun without changes reuses the cached calibration, and the sidebar
+    interpolation control reaches the Risk tab (global scope)."""
     from typing import Any
 
     import app.data as app_data
@@ -546,28 +547,32 @@ def test_expensive_calibration_is_cached_and_the_method_control_is_global(
     monkeypatch.setattr(app_data, "calibrate", counting)
     at = AppTest.from_file(APP, default_timeout=TIMEOUT)
     at.run()
-    # The Streamlit cache is process-global, so the MONOTONE key may already be warm
-    # from earlier tests (0 calls) or cold (1 call) — never more than one.
-    n_monotone = calls["n"]
-    assert n_monotone <= 1
-    captions = " ".join(c.value for c in at.caption)
-    assert "Under monotone convex the ladder is additive only to about 1.4%" in captions
-
-    at.sidebar.selectbox[0].select(InterpMethod.LOG_LINEAR_DF)
-    at.run()
-    # LOG_LINEAR must be a cold cache key here: the "switching recalibrates
-    # exactly once" contract is only observable for a key no earlier test
-    # warmed. (CUBIC is warmed by the interaction tests above; MONOTONE is the
-    # suite default.) LOG_LINEAR is a smooth method, so the same additivity
-    # caption applies.
-    n_linear = calls["n"]
-    assert n_linear == n_monotone + 1
+    # The app opens canonical: the sidebar default is LOG_LINEAR_DF (not the
+    # first overlay), and the Risk tab renders the smooth additivity caption.
+    assert at.sidebar.selectbox[0].value == InterpMethod.LOG_LINEAR_DF
+    # The Streamlit cache is process-global, so the LOG_LINEAR key may already
+    # be warm from earlier tests (0 calls) or cold (1 call) — never more than one.
+    n_first = calls["n"]
+    assert n_first <= 1
     captions = " ".join(c.value for c in at.caption)
     assert "Under this smooth scheme the ladder is additive to about 1e-4" in captions
+
+    at.run()  # unchanged choice: the rerun must reuse the cached calibration
+    assert calls["n"] == n_first
+
+    at.sidebar.selectbox[0].select(InterpMethod.MONOTONE_CONVEX)
+    at.run()
+    # The sidebar control reaches the Risk tab: the additivity caption flips to
+    # the monotone wording. (MONOTONE may already be cached from the direct
+    # calibration tests above, so the switch adds at most one fresh call.)
+    n_monotone = calls["n"]
+    assert n_monotone <= n_first + 1
+    captions = " ".join(c.value for c in at.caption)
+    assert "Under monotone convex the ladder is additive only to about 1.4%" in captions
     assert len(at.exception) == 0
 
     at.run()  # unchanged choice: the rerun must reuse the cached calibration
-    assert calls["n"] == n_linear
+    assert calls["n"] == n_monotone
     assert len(at.exception) == 0
 
 

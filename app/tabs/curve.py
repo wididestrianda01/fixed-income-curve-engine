@@ -66,7 +66,7 @@ def render(state: AppState) -> None:
     }
     st.plotly_chart(
         overlay_figure(zeros, y_title="Zero rate (%)", pillar_times=pillars),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         f"Calibration pillars at {', '.join(f'{t:.2f}y' for t in pillars)} (dotted "
@@ -82,7 +82,7 @@ def render(state: AppState) -> None:
     }
     st.plotly_chart(
         overlay_figure(forwards, y_title="3-month forward rate (%)", pillar_times=pillars),
-        use_container_width=True,
+        width="stretch",
     )
     st.markdown(
         "The forward curve is where interpolation schemes stop being interchangeable. "
@@ -104,7 +104,7 @@ def render(state: AppState) -> None:
             curve.fwd(float(t), float(t) + _FORWARD_TENOR) * 100.0 for t in _GRID
         ]
     with st.expander("Zero and 3-month forward grid (data)"):
-        st.dataframe(pd.DataFrame(grid_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(grid_data), width="stretch", hide_index=True)
 
     residual_rows: dict[str, list[object]] = {
         "Instrument": [
@@ -121,7 +121,7 @@ def render(state: AppState) -> None:
         "**Quote-repricing residuals** — each selected method's final model quote "
         "against its target."
     )
-    st.dataframe(pd.DataFrame(residual_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(residual_rows), width="stretch", hide_index=True)
     st.caption(
         "Target and model rates are decimal rates (0.05 = 5%); residual is model "
         "minus target, in basis points. The canonical log-linear build stays within "
@@ -153,7 +153,7 @@ def render(state: AppState) -> None:
                 },
                 y_title="Zero rate (%)",
             ),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "Svensson fits the bootstrapped zero rates on the 0.05y-10y grid (400 "

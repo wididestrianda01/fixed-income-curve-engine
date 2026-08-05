@@ -116,7 +116,7 @@ def _section_b(state: AppState) -> None:
                 list(ladder.values()),
                 y_title="Key-rate duration (price-bp per yield-bp)",
             ),
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "The SEK 1y key rate is interpolated, not observed. The Riksbank publishes 6m "
@@ -131,7 +131,7 @@ def _section_b(state: AppState) -> None:
                 list(par.values()),
                 y_title="Par-rate delta (per 100 face per 1 bp)",
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
     if state.method in _SMOOTH_METHODS:
@@ -168,8 +168,8 @@ def _section_b(state: AppState) -> None:
                 "Par-rate delta (per 100 face per 1 bp)": [round(v, 6) for v in par.values()],
             }
         )
-        st.dataframe(ladder_frame, use_container_width=True, hide_index=True)
-        st.dataframe(par_frame, use_container_width=True, hide_index=True)
+        st.dataframe(ladder_frame, width="stretch", hide_index=True)
+        st.dataframe(par_frame, width="stretch", hide_index=True)
 
 
 def _section_c(state: AppState) -> None:
@@ -202,7 +202,7 @@ def _section_c(state: AppState) -> None:
         figure.update_traces(
             marker_color=[ADVERSE if v <= threshold else PALETTE[0] for v in ladder.values()]
         )
-    st.plotly_chart(figure, use_container_width=True)
+    st.plotly_chart(figure, width="stretch")
 
     st.markdown(
         "The six shocks are the **EU 2024/856** supervisory scenarios — parallel up/down, "
@@ -215,9 +215,9 @@ def _section_c(state: AppState) -> None:
         "proxy book — an educational exhibit, not a regulatory EVE measure and not an "
         "IRRBB submission. There are no deposits, no net interest income, and no "
         "behavioural assumptions about non-maturity accounts. The dashed reference line "
-        "sits at -15% of the portfolio file's `tier1_capital`, an **invented** number "
-        "that is **not regulatory capital**; no capital is computed and no supervisory "
-        "threshold is applied."
+        "sits at -15% of the app's disclosed Tier 1 proxy constant (4,000,000,000 SEK, "
+        "an **invented** number committed alongside the demo portfolio — **not regulatory "
+        "capital**); no capital is computed and no supervisory threshold is applied."
     )
 
     rows = [
@@ -231,7 +231,7 @@ def _section_c(state: AppState) -> None:
         }
         for p in book.positions
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     st.caption(
         f"Base portfolio value {base:,.0f} SEK — a single-currency SEK book whose "
         "notionals are invented (see `demo_portfolio.toml`)."
@@ -245,7 +245,7 @@ def _section_c(state: AppState) -> None:
                     "Illustrative ΔEVE (SEK)": [f"{v:,.0f}" for v in ladder.values()],
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -294,7 +294,7 @@ def _section_d(state: AppState) -> None:
             markers={"VaR": -value_at_risk, "ES": -shortfall},
             x_title="Daily P&L (SEK)",
         ),
-        use_container_width=True,
+        width="stretch",
     )
     dates = sorted(cmt_history()["date"].unique())[-VAR_WINDOW:]
     st.caption(
@@ -308,7 +308,7 @@ def _section_d(state: AppState) -> None:
     with st.expander("Daily P&L observations (data)"):
         st.dataframe(
             pd.DataFrame({"Daily P&L (SEK)": pnl.tolist()}),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 

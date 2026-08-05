@@ -20,6 +20,7 @@ from app.state import AppState
 from app.tabs import beyond, curve, pricing, risk
 from app.tabs.curve import METHOD_LABELS
 from yieldcurve.curves.build import CurveDataError
+from yieldcurve.curves.interpolation import InterpMethod
 from yieldcurve.curves.parametric import FitError
 from yieldcurve.curves.protocol import MissingFixingError
 from yieldcurve.market.snapshot import MissingDatasetError
@@ -93,6 +94,7 @@ def build_sidebar() -> AppState:
     method = st.sidebar.selectbox(
         "Interpolation method (all tabs)",
         options=list(METHOD_LABELS),
+        index=list(METHOD_LABELS).index(InterpMethod.LOG_LINEAR_DF),
         format_func=lambda m: METHOD_LABELS[m],
         help=(
             "Global: every curve in every tab is rebuilt with this method. The package's "

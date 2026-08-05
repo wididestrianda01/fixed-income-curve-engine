@@ -49,7 +49,7 @@ def _section_a(state: AppState) -> None:
             },
             y_title="Zero rate (%)",
         ),
-        use_container_width=True,
+        width="stretch",
     )
     basis = government_swap_basis(load_snapshot(), state.asof, _BASIS_TENORS, method=state.method)
     st.plotly_chart(
@@ -58,7 +58,7 @@ def _section_a(state: AppState) -> None:
             [v * _BP for v in basis.values()],
             y_title="Government-swap basis (bp)",
         ),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "The basis chart is the price of the distinction: what a government curve says a "
@@ -74,7 +74,7 @@ def _section_a(state: AppState) -> None:
                     "Government-swap basis (bp)": [v * _BP for v in basis.values()],
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -104,7 +104,7 @@ def _section_b() -> None:
             },
             y_title="Component loading (unit-norm, dimensionless)",
         ),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         f"{result.n_observations} daily observations of US Treasury CMT par-yield changes "
@@ -119,7 +119,7 @@ def _section_b() -> None:
                 {name: result.loadings[i, :].tolist() for i, name in enumerate(_COMPONENT_NAMES)},
                 index=[f"{t:g}y" for t in result.tenors],
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -158,7 +158,7 @@ def _section_c(state: AppState) -> None:
             ],
         }
     )
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(table, width="stretch", hide_index=True)
     st.caption(
         "The residual is a real number because the volatilities did not come from the model "
         "being fitted. Two parameters cannot span an expiry-by-tenor grid; the misses "
@@ -191,7 +191,7 @@ def _section_c(state: AppState) -> None:
             {f"path {i}": (times, [v * 100.0 for v in paths[i]]) for i in range(paths.shape[0])},
             y_title="Short rate (%)",
         ),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
         "These paths are illustrative and are driven by the sliders, not by the calibration "

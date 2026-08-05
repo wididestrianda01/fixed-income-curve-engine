@@ -72,7 +72,7 @@ def render(state: AppState) -> None:
         )
     table = pd.DataFrame(rows)
     total = table["PV"].sum()
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(table, width="stretch", hide_index=True)
     st.caption(
         f"Flows sum to {total:.6f} against a dirty price of {result.dirty:.6f} — the visible "
         "proof that the pricer is doing nothing but discounting. Amounts and PVs are in "

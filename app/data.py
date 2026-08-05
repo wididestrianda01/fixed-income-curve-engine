@@ -166,7 +166,10 @@ def pnl_sample() -> tuple[npt.NDArray[np.float64], tuple[float, ...]]:
 def gov_bonds() -> tuple[FixedCouponBond, ...]:
     """Riksgälden benchmarks that mature inside the bootstrapped curve.
 
-    The 2039 and 2071 bonds are excluded on purpose: the SEK curve's last pillar is the 10y
+    The horizon filter keeps only bonds maturing on or before the 10y benchmark pillar
+    (the snapshot date plus 10 years, 2036-07-23); the four bonds beyond it — 2036-10-15
+    (SE0025137862), 2039-03-30 (SE0002829192), 2045-11-24 (SE0015193313) and 2071-06-23
+    (SE0016102115) — are excluded on purpose: the SEK curve's last pillar is the 10y
     benchmark, and quoting a price beyond it would be extrapolation presented as a price.
     """
     frame = load_snapshot().load("riksgalden_gov_bonds")
