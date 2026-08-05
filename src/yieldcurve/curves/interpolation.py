@@ -31,9 +31,12 @@ clamping them would silently distort the curve. Their *monotonicity* amendments 
 the four-region construction below — are implemented in full.
 
 Every scheme extrapolates flat in the zero rate beyond the last knot, at both
-ends of the curve. Extrapolated values are unobservable (Level 3) inputs: the
-flat rule is a stated modelling choice, not observed market data, and
-``covered_horizon`` records the largest curve time backed by quoted inputs.
+ends of the curve. Extrapolated values are unobservable inputs — a stated
+modelling choice, not observed market data. Under IFRS 13 an unobservable
+input is a Level 3 input, but no automatic hierarchy classification follows:
+the measurement's level depends on the significance of that input
+(IFRS 13.72-74). ``covered_horizon`` records the largest curve time backed by
+quoted inputs.
 """
 
 from __future__ import annotations
@@ -75,7 +78,9 @@ class InterpolatedDiscountCurve:
 
     ``covered_horizon`` is the largest curve time backed by quoted inputs —
     the last knot unless a builder states a shorter data horizon. Beyond it the
-    curve extrapolates flat in the zero rate, an unobservable (Level 3) rule.
+    curve extrapolates flat in the zero rate: an unobservable modelling rule,
+    and a Level 3 input under IFRS 13, with no automatic classification of the
+    measurement (see the module docstring).
     """
 
     reference_date: date
@@ -180,8 +185,8 @@ class InterpolatedDiscountCurve:
         """Log discount factor at any ``t > 0``.
 
         Outside the knots the curve extrapolates flat in the zero rate: an
-        unobservable (Level 3) modelling rule, not observed market data — see
-        the module docstring.
+        unobservable modelling rule, not observed market data — see the module
+        docstring.
         """
         if t <= self.times[0]:
             return -self._zero_rates[0] * t
