@@ -1,24 +1,28 @@
 # %% [markdown]
-# # Risk and scenario analysis
+# # 05: Risk diagnostics and scenario analysis
 #
 # ## Objective
 #
-# This notebook demonstrates the quantitative risk measurement framework for
-# interest rate risk in the banking book (IRRBB), focusing on key-rate duration
-# (KRD) decomposition and regulatory shock scenarios. We measure the economic
-# sensitivity of a real 10-year US Treasury bond to shifts in the zero-coupon
-# yield curve across principal component analysis (PCA) factors, validating that
-# the sum of KRDs equals effective duration: a fundamental identity in yield
-# curve risk measurement (Ho, 1992).
-
-# %% [markdown]
+# This notebook demonstrates the interest-rate risk diagnostics in
+# `yieldcurve.risk`: dollar value of a basis point (DV01), the duration
+# conventions the package distinguishes, key-rate durations (KRD) and the
+# identity that reconciles their sum to the effective duration, a
+# principal-component decomposition of historical yield moves, the six
+# EU 2024/856 supervisory shock shapes applied as an illustrative Delta EVE
+# comparison, and a linearized delta value-at-risk / expected-shortfall proxy.
+#
+# The instrument is a single 10-year US Treasury bond. Everything here is
+# educational: this is not a production risk system, not a regulatory
+# disclosure or outlier test, and no capital number is computed anywhere.
+#
 # ## Data
 #
-# **Snapshot date:** 24 July 2026. All market data are sourced from the committed
+# **Snapshot date:** 24 July 2026. All market data come from the committed
 # snapshot in `data/snapshots/2026-07-24/`.
 #
-# **Test instrument:** 10-year US Treasury bond with the following characteristics:
-# - Issue date: 24 July 2026 (on the money)
+# **Test instrument:** 10-year US Treasury bond with the following
+# characteristics:
+# - Issue date: 24 July 2026
 # - Maturity date: 24 July 2036
 # - Coupon: 4.0% per annum
 # - Frequency: Semi-annual
@@ -27,117 +31,139 @@
 # - Business day convention: Following
 # - Notional: USD 1,000,000
 #
-# This bond is a synthetic instrument constructed to fixed specifications for
-# reproducibility and consistency with the risk module's test suite. The USD OIS
-# curve (snapshot: `usd_ois_swaps.csv`) is used for discounting, with a 3M SOFR
-# forecast basis (`usd_forecast_basis.csv`) for projecting floating-rate coupons
-# (although this bond has no floating leg, the infrastructure is built for both).
+# The bond is a synthetic instrument constructed to fixed specifications for
+# reproducibility. The USD OIS curve (snapshot: `usd_ois_swaps.csv`) is used
+# for discounting, and the 3M SOFR forecast curve (`usd_forecast_basis.csv`)
+# for projecting floating-rate coupons — this bond has no floating leg, but
+# the curve set is the same dual-curve construction the rest of the repository
+# uses. Both curves are built with the canonical `usd_curveset` builder
+# (log-linear discount-factor bootstrap, exact sequential quote repricing on
+# the snapshot quotes).
 #
-# **Curves:** The discount curve is bootstrapped from USD OIS swap rates and
-# government bond prices through the standard bootstrap method (Svensson model as
-# fallback for extrapolation). Forecast curves (3M SOFR and other tenors) are
-# derived from the discount curve plus the basis adjustment from the snapshot.
-
-# %% [markdown]
+# **History:** the daily US Treasury CMT par-yield history
+# (`fred_treasury_cmt_history`) supplies the PCA factor calibration and the
+# historical P&L proxy. It is a CMT-implied history proxy, not an observed
+# funding-rate history.
+#
 # ## Theory
 #
-# ### Effective duration and DV01
+# ### DV01
 #
-# **Dollar Value of a Basis Point (DV01)** measures the change in bond value
-# when the yield curve shifts up by one basis point (0.01%). For a
-# continuously compounded zero-coupon yield curve, DV01 is defined as:
+# **Dollar Value of a Basis Point (DV01)** is the package convention from
+# `yieldcurve.risk.sensitivities.dv01`:
 #
-# $$\text{DV01} = -\frac{\Delta P}{\Delta y} \bigg|_{\Delta y = 1 \text{ bp}}$$
+# > DV01 is `base - up` — the price falls when rates rise, so the number is
+# > positive for a long position. It is a positive loss, not a signed price
+# > change.
 #
-# **Effective Duration** (also called modified duration adjusted for the curve
-# shape) is DV01 normalized to a percentage of the bond's dirty price:
+# That is, for a 1 bp parallel rise in all zero rates, DV01 is the resulting
+# loss per 100 face. The printed unit is **USD per 100 face per 1 bp**.
 #
-# $$D_{\text{eff}} = -\frac{1}{P} \frac{\Delta P}{\Delta y}$$
+# ### Duration conventions
 #
-# where $\Delta y$ is a parallel shift of all zero rates by one basis point, and
-# $P$ is the bond's dirty price.
+# The package distinguishes three conventions, and the names matter:
 #
-# ### Key-rate duration (KRD)
+# - **Effective duration** — central difference of price under a parallel
+#   1 bp zero-rate shift, normalized by the dirty price. This is the number
+#   the KRD sum must reconcile to.
+# - **Fisher-Weil duration** — the spot-curve-weighted mean time to cash
+#   flow: each cash flow is weighted by the discount factor *from the curve*,
+#   not from the yield. This is the correct name for curve-weighted mean time
+#   (formerly mislabelled Macaulay in some texts).
+# - **Macaulay duration** — the classical YTM-weighted mean time to cash
+#   flow: the same weighting scheme, but each flow is discounted at the
+#   instrument's own yield to maturity.
 #
-# **Key-rate duration** extends effective duration by measuring sensitivity to
-# shocks at specific tenors of the curve, rather than only parallel shifts.
-# Following Ho (1992), the key-rate duration for key $k$ is:
+# On a sloped curve the two differ; on a flat curve they coincide.
 #
-# $$\text{KRD}_k = -\frac{1}{P} \frac{\Delta P}{\Delta y_k} \bigg|_{\text{shift at tenor } k}$$
+# ### Key-rate durations (KRD)
 #
-# where the shock is zero at all other key rates and interpolates linearly
-# between neighboring keys. The shape of this shock is called a "hat" ; it is
-# flat before the first key, triangular between keys, and flat outside the last key.
+# Following Ho (1992), the **key-rate duration** for key $k$ measures
+# sensitivity to a unit shock at tenor $k$ alone:
+#
+# $$\text{KRD}_k = -\frac{1}{P}\,\frac{\Delta P}{\Delta y_k}$$
+#
+# where the shock is a triangular "hat": full size at the key, linear to zero
+# at the neighbouring keys, flat outside the first and last keys. Each KRD is
+# computed by central finite difference with a 1 bp bump.
+#
+# **Units:** the package quotes KRD in **price-bp per yield-bp** — a 1 bp
+# rise in the key rate moves the dirty price by that many price basis points
+# (1 price bp = 1e-4 of price), numerically equal to years of duration and
+# **not** multiplied by 100.
 #
 # ### The KRD sum identity
 #
-# A critical property of key-rate durations is that they decompose effective
-# duration completely:
+# Because the hats form a partition of unity — at every tenor the hats sum to
+# a constant 1 bp shift — the sum of the key-rate durations equals the
+# parallel-shift duration, up to the $O(\text{bump}^2)$ truncation error of
+# the central finite differences. The identity is therefore a *completeness
+# check* on the hat basis: it is not exact to machine precision, and the
+# measured residual is part of the result, not something to round away.
 #
-# $$\sum_{k} \text{KRD}_k = D_{\text{eff}}$$
-#
-# This identity holds *exactly* in theory because the triangular hats span the
-# entire curve and sum to a uniform 1-bp shift at every tenor. In practice,
-# numerical precision (bump size, interpolation) introduces small residuals
-# (typically <0.1 basis points of DV01). This notebook verifies the identity
-# numerically and reports the residual explicitly.
-
-# %% [markdown]
 # ## Methodology
 #
 # ### Bump size and central finite difference
 #
-# KRDs and effective duration are computed using central finite difference:
+# KRDs and effective duration are computed by central finite difference with
+# a default bump of 1 bp (1e-4) applied symmetrically (±1 bp):
 #
 # $$\text{Sensitivity} \approx \frac{P(y + \Delta y) - P(y - \Delta y)}{2 \Delta y}$$
 #
-# where $\Delta y$ is the bump size. The implementation uses a default bump of
-# **1e-4 (1 basis point)** applied symmetrically (±1bp), balancing:
-# - Numerical stability (larger bumps reduce rounding error)
-# - Linearity (smaller bumps improve the linear approximation of convexity)
-#
-# This bump size is calibrated to the precision of floating-point arithmetic
-# and matches market convention for risk reporting.
+# A central difference is used rather than a one-sided one because the
+# one-sided error is $O(\text{bump})$ and, for a bond with any convexity at
+# all, biases duration systematically. The 1 bp bump keeps the truncation
+# error at $O(10^{-8})$ while staying well above the floating-point noise
+# floor.
 #
 # ### Shock application
 #
-# Each key-rate shock is applied to both the discount curve and all forecast
-# curves in the curve set, maintaining the basis structure. This prevents the
-# shock from being contaminated by an offsetting basis adjustment (which would
-# measure a combined rate shock + basis shock, not a pure rate shock).
-
-# %% [markdown]
-# ## Regulation
+# Each scenario (key-rate hat or EU shock) is applied to the discount curve
+# and every forecast curve in the curve set, so the basis structure between
+# them is preserved and the shock measures a pure rate move rather than a
+# rate-plus-basis move.
 #
-# ### Regulatory context: BCBS d368 and the EBA guidelines
+# ## Regulatory context
 #
-# Interest rate risk in the banking book (IRRBB) is governed by:
+# The six shock shapes used below come from **Commission Delegated Regulation
+# (EU) 2024/856** of 1 December 2023 (the IRRBB RTS under CRD Article 98(5a);
+# OJ L, 24.4.2024, in force 14 May 2024). In the current EU framework:
 #
-# 1. **CRR Article 448** (Regulation (EU) No 575/2013): requires institutions
-#    to disclose sensitivity of economic value to interest rate shocks, broken
-#    down by currency.
+# 1. **CRD Article 84** requires competent authorities to ensure institutions
+#    implement internal systems or a standardised methodology for interest
+#    rate risk arising from non-trading book activities (IRRBB), covering
+#    both economic value of equity (EVE) and net interest income (NII).
+# 2. **CRD Article 98(5)** makes IRRBB part of the supervisory review
+#    (SREP), and Article 98(5a) mandates the EBA RTS on the six EVE
+#    scenarios, the two NII scenarios per currency, and the common modelling
+#    and parametric assumptions. That RTS is DR 2024/856.
+# 3. **DR 2024/856** specifies the six supervisory shock scenarios (parallel
+#    up/down, short-rate up/down, steepener, flattener; Article 1), the
+#    $e^{-t/4}$ short-rate parameterisation and rotation weights (Article 2),
+#    the Article 3(7) maturity-dependent post-shock floor, and the "large
+#    decline" definition (Article 5). Its Annex Part A lists per-currency
+#    shock sizes; the USD row is 200 / 300 / 150 bp (parallel / short / long).
+# 4. **CRR Article 448** ("Disclosure of exposures to interest rate risk on
+#    positions not held in the trading book"), as amended by CRR2 and in
+#    force since 28 June 2021, requires institutions to disclose the changes
+#    in EVE under the six supervisory shock scenarios and the changes in NII
+#    under the two NII scenarios of CRD Article 98(5), plus key modelling and
+#    parametric assumptions. The original 2013 wording ("variation in
+#    earnings, economic value or other relevant measure... broken down by
+#    currency") is historical and is not quoted here as current.
+# 5. **EBA/GL/2018/02** (Guidelines on the management of interest rate risk
+#    arising from non-trading book activities, applicable from 30 June 2019)
+#    reflected the BCBS-specified supervisory shock scenarios; DR 2024/856
+#    builds on that specification and methodology, and the six-scenario
+#    parameters are now binding through DR 2024/856.
 #
-# 2. **BCBS d368** (Basel Committee on Banking Supervision: *Interest rate risk
-#    in the banking book*, April 2016): prescribes a standardized set of six
-#    shock scenarios applied to the risk-free zero curve:
-#    - **Parallel up/down:** uniform shift across all tenors
-#    - **Short-rate up/down:** exponentially decaying shock (strong effect at short end,
-#      decay controlled by a calibrated parameter)
-#    - **Steepener:** short-end rates fall while long-end rates rise, so the
-#      curve slope (long minus short) increases
-#    - **Flattener:** short-end rates rise while long-end rates fall, so the
-#      curve slope decreases
-#    Shock magnitudes are calibrated to historical volatility and outlier analysis
-#    by currency.
-#
-# 3. **EBA/GL/2018/02** (EBA Guidelines on procedures for IRRBB outlier tests):
-#    carries the BCBS framework into EU law and provides operational guidance for
-#    testing and reporting IRRBB exposures.
-#
-# This notebook applies the USD scenarios from BCBS d368 (defined in scenarios.toml)
-# to the bootstrapped USD OIS curve. The P&L output demonstrates the bond's
-# non-linear (convexity) response to each scenario and provides early warning
-# of tail risk at the regulatory shock magnitudes.
+# What this notebook does with them is deliberately bounded: the six USD
+# shocks are applied to a single bond book as an **illustrative Delta EVE
+# comparison** — a revaluation of the book on the shocked curve set. That is
+# not an institution-wide supervisory outlier test (no balance sheet, no EVE
+# aggregation, no 15%-of-Tier-1 threshold), not IRRBB compliance, not a
+# disclosure, and not a capital calculation. The numbers are educational
+# exhibits.
 
 # %% [markdown]
 # ## Results
@@ -158,20 +184,33 @@ from yieldcurve.curves.pricing import price
 from yieldcurve.instruments import FixedCouponBond
 from yieldcurve.market.snapshot import Snapshot
 from yieldcurve.risk.keyrate import USD_KEY_RATES, krd
-from yieldcurve.risk.pca import fit_pca, pca_durations
-from yieldcurve.risk.scenarios import bcbs_scenarios, shift_curveset
-from yieldcurve.risk.sensitivities import effective_duration
+from yieldcurve.risk.pca import daily_changes, fit_pca, pca_durations, pca_exposure
+from yieldcurve.risk.portfolio import (
+    Portfolio,
+    Position,
+    bucket_exposure,
+    delta_eve,
+    historical_pnl,
+    present_value,
+    var_es,
+)
+from yieldcurve.risk.scenarios import eu_scenarios, shift_curveset
+from yieldcurve.risk.sensitivities import (
+    dv01,
+    effective_duration,
+    fisher_weil_duration,
+    instrument_scale,
+    macaulay_duration,
+)
 
 # %%
-# Set up snapshot and rebuild curves from market data
+# Set up snapshot, curves, and the test bond
 ASOF = date(2026, 7, 24)
 snapshot = Snapshot(date=ASOF)
 
-# Build discount and forecast curves from OIS swaps + basis
+# Discount curve (OIS) and 3M SOFR forecast curve, canonical log-linear build
 curves = usd_curveset(snapshot, ASOF)
 
-# %%
-# Construct the test bond: 10-year US Treasury with 4% coupon, semi-annual
 bond = FixedCouponBond(
     issue=ASOF,
     maturity=date(2036, 7, 24),
@@ -182,297 +221,414 @@ bond = FixedCouponBond(
     bdc=BusinessDayConvention.FOLLOWING,
 )
 
-print("Test Bond:")
+print("Test bond:")
 print(f"  Maturity: {bond.maturity}")
-print(f"  Coupon: {bond.coupon * 100:.2f}%")
-print(f"  Frequency: {bond.frequency} (semi-annual)")
+print(f"  Coupon:   {bond.coupon * 100:.2f}% p.a., semi-annual")
+print("  Face:     USD 100 per unit (price quotes per 100 face)")
 
 # %%
-# Compute bond price and effective duration
+# Valuation and the duration conventions
 price_result = price(bond, curves, ASOF)
 dirty_price = price_result.dirty
-effective_dur = effective_duration(bond, curves, ASOF)
 
-print(f"\nBond valuation at {ASOF}:")
-print(f"  Dirty price: ${dirty_price:,.4f} per ${100.0:.2f} notional")
-print(f"  Effective duration: {effective_dur:.6f} years")
+eff_dur = effective_duration(bond, curves, ASOF)
+fw_dur = fisher_weil_duration(bond, curves, ASOF)
+mac_dur = macaulay_duration(bond, curves, ASOF)
+dv01_per_100 = dv01(bond, curves, ASOF)
+
+print(f"Bond valuation at {ASOF} (USD per 100 face):")
+print(f"  Dirty price: {dirty_price:,.6f} USD")
+print(f"  Accrued:     {price_result.accrued:,.6f} USD")
+print(f"  Clean price: {price_result.clean:,.6f} USD")
+print()
+print("Duration conventions (years):")
+print(f"  Effective duration (parallel 1 bp zero shift, central difference): {eff_dur:.6f}")
+print(f"  Fisher-Weil duration (spot-curve-weighted mean time):              {fw_dur:.6f}")
+print(f"  Macaulay duration (YTM-weighted mean time):                       {mac_dur:.6f}")
+print()
+print(f"DV01 (positive loss per 1 bp rise, USD per 100 face): {dv01_per_100:.6f}")
 
 # %%
-# Compute key-rate durations
+# Key-rate durations on the USD key-rate grid
 krd_results = krd(bond, curves, ASOF, USD_KEY_RATES)
 
-# Display KRD table
 krd_df = pd.DataFrame(
     {
-        "Tenor (years)": list(krd_results.keys()),
-        "KRD (years)": list(krd_results.values()),
+        "Key rate (years)": list(krd_results.keys()),
+        "KRD (price-bp per yield-bp)": list(krd_results.values()),
     }
 )
-krd_df["KRD (bp/bp)"] = krd_df["KRD (years)"] * 100
 
-print("\n### Result 1: Key-Rate Durations (USD Curve)\n")
-print(krd_df.to_string(index=False))
+print("### Result: Key-rate durations (USD curve)")
+print("Units: a 1 bp rise in the key rate moves the dirty price by that many")
+print("price basis points (1 price bp = 1e-4 of price); numerically equal to")
+print("years of duration; not multiplied by 100.")
+print()
+print(krd_df.to_string(index=False, float_format=lambda v: f"{v:,.6f}"))
 print()
 
 # %%
-# Verify KRD sum reconciles to effective duration
+# KRD sum vs effective duration: the identity reconciliation
 krd_sum = sum(krd_results.values())
-reconciliation_error = abs(krd_sum - effective_dur)
-reconciliation_pct = (reconciliation_error / effective_dur) * 100
+rec_error = abs(krd_sum - eff_dur)
+rec_rel = rec_error / eff_dur
+tolerance = 1e-5  # years; the printed precision threshold used throughout
 
-print("### Result 2: KRD Sum vs. Effective Duration (Identity Reconciliation)\n")
-print(f"  Sum of KRDs:        {krd_sum:>12.8f} years")
-print(f"  Effective duration: {effective_dur:>12.8f} years")
-print(f"  Absolute error:     {reconciliation_error:>12.2e} years")
-print(f"  Relative error:     {reconciliation_pct:>12.6f} %")
+print("### KRD sum vs. effective duration (identity reconciliation)")
+print(f"  Sum of KRDs:        {krd_sum:12.8f} years (price-bp per yield-bp)")
+print(f"  Effective duration: {eff_dur:12.8f} years")
+print(f"  Absolute error:     {rec_error:12.3e} years")
+print(f"  Relative error:     {rec_rel:12.3e}  ({rec_rel * 100:.6f} %)")
+print(f"  Tolerance:          |error| < {tolerance:.0e} years")
+print(f"  Within tolerance:   {rec_error < tolerance}")
 print()
-if reconciliation_error < 1e-5:
-    print("  ✓ Identity verified to high precision (error < 10 µy)")
-else:
-    print(f"  ⚠ Non-negligible residual ({reconciliation_error * 10000:.4f} bp DV01)")
-print()
+print("The residual is the O(bump^2) central-difference truncation error: the")
+print("hats partition unity exactly, but each KRD is a finite-difference")
+print("estimate, so the sum matches the parallel-shift duration only to that")
+print("order.")
 
 # %%
-# Apply BCBS regulatory scenarios and plot
-scenarios = bcbs_scenarios("USD")
-scenario_pnl = {}
+# The six EU 2024/856 supervisory shock scenarios (USD row), applied to the
+# single-bond book as an illustrative Delta EVE comparison
+scenarios = eu_scenarios("USD")
 
-fig, ax = plt.subplots(figsize=(12, 7))
+portfolio = Portfolio(
+    positions=(
+        Position(label="10y UST 4% (USD 1,000,000 face)", instrument=bond, notional=1_000_000.0),
+    )
+)
+base_pv = present_value(portfolio, curves, ASOF)
 
-# Compute zero rates for current curve and shocked curves
 times = np.linspace(0.01, 30, 300)
 current_zeros = np.array([curves.discount.zero(t) for t in times])
 
+fig, ax = plt.subplots(figsize=(12, 7))
+delta_rows = []
 for scenario in scenarios:
-    # Shift curves according to scenario
-    shifted_curves = shift_curveset(curves, scenario)
+    shocked_zeros = np.array([shift_curveset(curves, scenario).discount.zero(t) for t in times])
+    shift_bps = (shocked_zeros - current_zeros) * 1e4
+    d_eve = delta_eve(portfolio, curves, ASOF, scenario)
+    d_bp = d_eve / base_pv * 1e4
+    delta_rows.append((scenario.name, d_eve, d_bp))
+    ax.plot(times, shift_bps, label=f"{scenario.name}: \u0394EVE {d_eve:+,.0f} USD", linewidth=2)
 
-    # Reprice bond under shocked curve
-    shifted_price = price(bond, shifted_curves, ASOF).dirty
-
-    # Compute P&L in basis points of notional
-    pnl_bps = (shifted_price - dirty_price) / dirty_price * 10000
-    scenario_pnl[scenario.name] = pnl_bps
-
-    # Get zero rates under shock for plotting
-    shocked_zeros = np.array([shifted_curves.discount.zero(t) for t in times])
-    shift_bps = (shocked_zeros - current_zeros) * 10000
-
-    ax.plot(times, shift_bps, label=f"{scenario.name}: P&L = {pnl_bps:+.2f}bp", linewidth=2)
-
-ax.set_xlabel("Tenor (years)", fontsize=11)
-ax.set_ylabel("Zero Rate Shock (basis points)", fontsize=11)
-title = "BCBS d368 Interest Rate Shock Scenarios (USD)"
-ax.set_title(title, fontsize=13, fontweight="bold")
-ax.legend(loc="best", fontsize=10)
+ax.set_xlabel("Tenor (years)")
+ax.set_ylabel("Applied zero-rate shift (bp)")
+ax.set_title(
+    "EU 2024/856 supervisory shock scenarios, USD row "
+    "(Article 1(1) shapes; Article 3(7) post-shock floor applied)"
+)
+ax.legend(loc="best", fontsize=9)
 ax.grid(True, alpha=0.3)
 ax.set_xlim([0, 30])
 plt.tight_layout()
 plt.show()
 
 # %%
-# Display BCBS scenario P&L summary
-scenario_pnl_df = pd.DataFrame(
+# Scenario P&L summary table
+scenario_df = pd.DataFrame(
     {
-        "Scenario": list(scenario_pnl.keys()),
-        "Bond P&L (bp)": list(scenario_pnl.values()),
+        "Scenario": [row[0] for row in delta_rows],
+        "Illustrative \u0394EVE (USD, 1,000,000 face)": [row[1] for row in delta_rows],
+        "\u0394EVE as share of base PV (bp of price)": [row[2] for row in delta_rows],
     }
 )
-print("\n### BCBS Scenario Bond P&L Summary\n")
-print(scenario_pnl_df.to_string(index=False))
+
+print("### EU 2024/856 scenarios applied to the bond book")
+print("Illustrative Delta EVE comparison: the book is revalued on each shocked")
+print("curve set. Sign convention: negative \u0394EVE = value destroyed (a loss);")
+print("positive = a gain. Base book value:")
+print(f"  {base_pv:,.2f} USD (USD 1,000,000 face, dirty)")
 print()
+print(scenario_df.to_string(index=False, float_format=lambda v: f"{v:,.2f}"))
+print()
+print("These are educational exhibits: not a supervisory outlier test, not a")
+print("disclosure, and not a capital number.")
 
 # %%
-# %%
-# Compute PCA factor loadings from 5-year history of Treasury yields
-# Load historical Treasury rates
-hist_data = snapshot.load("fred_treasury_cmt_history")
+# PCA of the daily CMT yield-change history
+hist = snapshot.load("fred_treasury_cmt_history")
+changes, tenors = daily_changes(hist)
+pca = fit_pca(changes, tenors, n_components=3)
 
-# Pivot to shape (dates, tenors)
-hist_pivot = hist_data.pivot_table(
-    index="date", columns="tenor_years", values="rate", aggfunc="first"
+date_min = str(hist["date"].min())[:10]
+date_max = str(hist["date"].max())[:10]
+
+print("### Principal-component decomposition of daily CMT yield changes")
+print(
+    f"History: {date_min} to {date_max} — {pca.n_observations} daily changes "
+    f"on {len(tenors)} tenors ({', '.join(f'{t:g}y' for t in tenors)})"
 )
-
-# Select tenors matching USD_KEY_RATES for consistency
-common_tenors = tuple(sorted(set(USD_KEY_RATES) & set(hist_pivot.columns)))
-hist_subset = hist_pivot[list(common_tenors)]
-
-# Forward-fill then backward-fill to handle missing data
-hist_subset = hist_subset.ffill().bfill()
-
-# Compute first differences (daily yield changes in decimals)
-yield_changes = hist_subset.diff().dropna()  # Keep in decimals for PCA scaling
-
-# Fit PCA with 3 components (level, slope, curvature)
-pca_result = fit_pca(yield_changes.values, common_tenors, n_components=3)
-
-# Compute PCA durations for the bond
-pca_durs = pca_durations(bond, curves, ASOF, pca_result)
-
-print("\n### Result 4: PCA Factor Loadings\n")
-print("Principal Component Durations (Economic Sensitivity to PCA Factors):\n")
-for name, duration in pca_durs.items():
-    print(f"  {name:20s}: {duration:>10.6f} years")
 print()
-
-# Interpretation of PCA loadings
-print("Interpretation:")
-print("  - Level:     Duration sensitivity to the historical level factor (parallel moves)")
-print("  - Slope:     Duration sensitivity to the historical slope factor (curve shape changes)")
-print("  - Curvature: Duration sensitivity to the historical curvature factor (mid-curve twist)")
+print("Component names are PC1/PC2/PC3 unless the loading's sign pattern")
+print("matches the documented economic criterion (no sign change for level,")
+print("one for slope, two for curvature); the diagnostic behind each name is")
+print("printed as the loading shape.")
+print()
+for index, (name, shape, var_ratio, sd) in enumerate(
+    zip(
+        pca.component_names,
+        pca.loading_shape,
+        pca.explained_variance_ratio,
+        pca.component_sd,
+        strict=True,
+    )
+):
+    print(
+        f"  {name:9s} (PC{index + 1}): explained variance {var_ratio * 100:6.2f}% | "
+        f"1-sigma move {sd * 1e4:7.2f} bp | loading shape: {shape}"
+    )
+print()
 
 # %%
-# Compute variance explained by PCA factors
-total_var = sum(pca_result.explained_variance_ratio)
-level_var_pct = (pca_result.explained_variance_ratio[0] / total_var) * 100
-slope_var_pct = (pca_result.explained_variance_ratio[1] / total_var) * 100
-curve_var_pct = (pca_result.explained_variance_ratio[2] / total_var) * 100
+# PCA-derived risk measures: direction duration vs one-sigma exposure
+pca_durs = pca_durations(bond, curves, ASOF, pca)
+pca_expos = pca_exposure(bond, curves, ASOF, pca)
 
-date_min = str(hist_subset.index.min())[:10]
-date_max = str(hist_subset.index.max())[:10]
-print(f"\nHistorical variance explained by principal components ({date_min} to {date_max}):")
-print(f"  Level:     {level_var_pct:>6.2f}%")
-print(f"  Slope:     {slope_var_pct:>6.2f}%")
-print(f"  Curvature: {curve_var_pct:>6.2f}%")
+print("Direction-only duration along each component's unit-norm loading")
+print("(years per 1.0 zero-rate shift along the direction; the component's")
+print("empirical volatility is not involved):")
+for name, value in pca_durs.items():
+    print(f"  {name:9s}: {value:9.4f} years")
 print()
+print("One-standard-deviation exposure (fractional price change for a 1-sigma")
+print("move along the component; empirical scale retained; dimensionless):")
+for name, value in pca_expos.items():
+    print(f"  {name:9s}: {value:+.6f}  ({value * 1e4:+.2f} bp of price)")
+print()
+print("Sign convention: positive = the position loses value when the zero")
+print("curve moves +1 sigma along the component — the same positive-loss")
+print("convention as DV01.")
+print()
+print("Consistency check, exposure[k] == duration[k] x component_sd[k]:")
+for name, d, e, sd in zip(
+    pca.component_names, pca_durs.values(), pca_expos.values(), pca.component_sd, strict=True
+):
+    print(f"  {name:9s}: {e:+.6f} vs {d * sd:+.6f}")
+
+# %%
+# Historical VaR / expected shortfall: a linearized delta proxy
+pnl = historical_pnl(portfolio, curves, ASOF, changes, tenors, USD_KEY_RATES)
+var99, es99 = var_es(pnl, confidence=0.99)
+
+print("### Historical VaR and expected shortfall (linearized delta proxy)")
+print("Construction: the book's key-rate bucket exposures at the valuation")
+print("date are contracted with the daily CMT yield changes above — a")
+print("CMT-implied history proxy, not an observed funding-rate history.")
+print("First-order (delta) only: no full revaluation, no FRTB or other")
+print("regulatory measure. Treat the numbers as a volatility proxy.")
+print()
+print(f"  Window: {date_min} to {date_max} ({len(pnl)} daily changes)")
+print(f"  Book:   10y UST 4%, USD 1,000,000 face, base PV {base_pv:,.2f} USD")
+print(f"  VaR 99%: {var99:,.2f} USD  ({var99 / base_pv * 100:.3f}% of base PV)")
+print(f"  ES  99%: {es99:,.2f} USD  ({es99 / base_pv * 100:.3f}% of base PV)")
+print("  Convention: losses are the negated P&L observations; both numbers")
+print("  are non-negative loss magnitudes, and ES >= VaR by construction.")
+
+# %%
+# Independently pinned asymmetric loss example (hand-computed)
+asym_pnl = np.array([5.0] * 85 + [-10.0] * 12 + [-50.0] * 3)
+asym_var, asym_es = var_es(asym_pnl, confidence=0.90)
+
+print("### Independently pinned asymmetric loss example")
+print("100 P&L observations (gains positive):")
+print("  85 x +5.0   (small gains)")
+print("  12 x -10.0  (moderate losses)")
+print("   3 x -50.0  (large losses)")
+print()
+print("Hand computation at 90% confidence (losses = negated P&L):")
+print("  Loss distribution: 85 x -5.0, 12 x +10.0, 3 x +50.0")
+print("  VaR = 90th percentile of losses = 10.0")
+print("  Tail = losses >= 10.0 = 15 observations (12 x 10.0 + 3 x 50.0)")
+print("  ES  = mean of the tail = (120.0 + 150.0) / 15 = 18.0")
+print()
+print(
+    f"  var_es returns: VaR = {asym_var:.1f}, ES = {asym_es:.1f}  "
+    f"(ES >= VaR: {asym_es >= asym_var})"
+)
+print()
+print("The asymmetry is the point: the three large losses sit beyond VaR,")
+print("and only expected shortfall sees them — the loss-positive convention")
+print("keeps both numbers non-negative.")
+
+# %%
+# Portfolio face/notional scaling (per-100-face unit prices)
+units = 500_000.0 / instrument_scale(bond)
+scaled_portfolio = Portfolio(
+    positions=(
+        Position(label="10y UST 4% (USD 500,000 face)", instrument=bond, notional=500_000.0),
+    )
+)
+scaled_pv = present_value(scaled_portfolio, curves, ASOF)
+scaled_dv01 = units * dv01_per_100
+k10 = krd_results[10.0]
+hand_k10_loss = units * k10 * dirty_price * 1e-4
+bucket10_per_bp = bucket_exposure(scaled_portfolio, curves, ASOF, USD_KEY_RATES)[10.0] * 1e-4
+scaled_pnl = historical_pnl(scaled_portfolio, curves, ASOF, changes, tenors, USD_KEY_RATES)
+scaled_var, scaled_es = var_es(scaled_pnl, confidence=0.99)
+
+print("### Portfolio face/notional scaling (per-100-face unit prices)")
+print("price() quotes per 100 face; a position of N face is N / instrument_scale")
+print("= N / 100 units of the unit price. Take the same bond with N = 500,000")
+print("face (5,000 units):")
+print()
+print(f"  Units: {units:,.0f} = 500,000 / 100")
+print(f"  Hand:     position value = 5,000 x {dirty_price:,.6f} = {units * dirty_price:,.2f} USD")
+print(f"  Library:  present_value = {scaled_pv:,.2f} USD")
+print(f"  Hand:     DV01 = 5,000 x {dv01_per_100:.6f} = {scaled_dv01:,.2f} USD per 1 bp")
+print(f"  Hand:     10y-key loss per 1 bp = 5,000 x {k10:.6f} x {dirty_price:.6f} x 1e-4")
+print(f"           = {hand_k10_loss:,.2f} USD (loss magnitude)")
+print(f"  Library:  bucket_exposure(10y) per 1 bp = {bucket10_per_bp:,.2f} USD")
+print("           (signed change in book value; negative = loss; bucket_exposure")
+print("           is per 1.0 rate = per 100 bp, scaled by 1e-4 to per 1 bp)")
+print(f"  VaR 99% / ES 99%: {scaled_var:,.2f} / {scaled_es:,.2f} USD")
+print(f"  (1,000,000-face book: {var99:,.2f} / {es99:,.2f} USD — risk scales linearly")
+print("   with face, so half the face means half the risk)")
 
 # %% [markdown]
 # ## Interpretation
 #
 # ### The KRD-to-effective-duration identity
 #
-# The two quantities reaching the same answer is worth pausing on, because they
-# are not the same calculation performed twice. Effective duration comes from a
-# single parallel shift of the entire curve and one pair of repricings. The
-# key-rate durations come from ten separate repricings, each perturbing one
-# pillar through a triangular hat function that decays to zero at its
+# The two quantities reaching the same answer is worth pausing on, because
+# they are not the same calculation performed twice. Effective duration comes
+# from a single parallel shift of the entire curve and one pair of repricings.
+# The key-rate durations come from ten separate repricings, each perturbing
+# one pillar through a triangular hat function that decays to zero at its
 # neighbours. Nothing in the code forces the ten to reconcile to the one.
 #
 # They reconcile because the hat functions form a partition of unity: added
-# together, they sum to a constant one basis point at every maturity across the
-# covered span, with the flat extrapolation outside the first and last pillars
-# supplying the tails. Summing the key-rate bumps therefore rebuilds precisely
-# the parallel shift that effective duration applies in a single step.
+# together, they sum to a constant one basis point at every maturity across
+# the covered span, with the flat extrapolation outside the first and last
+# pillars supplying the tails. Summing the key-rate bumps therefore rebuilds
+# precisely the parallel shift that effective duration applies in a single
+# step.
 #
-# What the agreement to within ~6e-8 years actually establishes is narrower than
-# it first appears, and worth stating precisely. It confirms that the hat basis
-# is complete: no maturity range is double-counted or left uncovered: and that
-# the bond's price response is close to linear over a one basis point move, so
-# that first-order additivity survives. A residual at the basis-point level
+# The measured residual here is about 6e-8 years with a 1 bp bump. That is
+# the $O(\text{bump}^2)$ truncation error of the central differences, not an
+# exactness miracle: the identity is a completeness check on the hat basis.
+# No maturity range is double-counted or left uncovered, and the bond's price
+# response is close to linear over a one basis point move, so first-order
+# additivity survives to that precision. A residual at the basis-point level
 # would point to a gap in the basis or a mismatch in bump conventions.
-#
-# It is worth contrasting this with the par-rate delta ladder in
-# `yieldcurve.risk.ladder`, which decomposes the same risk but bumps quoted par
-# rates and re-bootstraps rather than shifting the zero curve directly. That
-# ladder does not reconcile as cleanly: it totals 97-99% of DV01 on the OIS set
-# used in its tests, and the shortfall is the Jacobian of the par-to-zero map,
-# which is the identity only for a flat curve quoted on curve basis. The quotes
-# there are ACT/360 while curve time is ACT/365F, so a residual is expected
-# rather than symptomatic.
-#
-# That ladder is also documented as losing additivity under `MONOTONE_CONVEX`,
-# by roughly 1.4% on its test quotes: the Hagan-West amendment tests branch on
-# which region a forward falls into, so a one basis point bump can flip a region
-# and reshape the curve between knots. The key-rate decomposition shown above
-# sidesteps the re-bootstrapping step entirely, which is why its reconciliation
-# is exact to numerical precision. Neither construction is the correct one in
-# general: they answer different questions, and the par ladder is the one a
-# desk hedging with traded instruments would want.
 #
 # ### What the key-rate durations show
 #
-# The KRD decomposition reveals where on the yield curve the bond's risk is
+# The KRD table tells us where on the yield curve the bond's risk is
 # concentrated. For a 10-year bullet bond:
 #
-# - **Peak KRD** occurs near the maturity (10-year key rate), as expected for a
-#   single cash-flow-heavy instrument.
-# - **Slope of KRD curve** reflects cash flow timing: earlier payments create
-#   KRDs at shorter tenors, but a 4% coupon bond has most of its present value
-#   at maturity, so the distribution is skewed toward 10y.
-# - **Zero KRD at long-end keys** (20y, 30y) indicates negligible sensitivity
-#   to shocks outside the bond's maturity: the shock has no effect on
-#   already-received cash flows and minimal effect on discounting.
+# - **Peak KRD at the 10-year key** (about 7.1 of the 8.28 years of effective
+#   duration): the redemption payment is by far the largest cash flow, and it
+#   lands exactly on that key.
+# - **Small positive KRDs at the intermediate keys** (0.5y to 7y): these
+#   carry the coupons. Their magnitudes track the coupon cash-flow sizes.
+# - **Zero KRDs at the 0.25y and 30y keys**, and essentially zero at 20y:
+#   the hat at 0.25y vanishes at the first coupon date (0.5y), and the hats
+#   at 20y/30y only move rates beyond the bond's 10-year maturity, which
+#   affects none of its cash flows.
 #
-# ### BCBS scenario ranking
+# ### The EU 2024/856 scenario ranking
 #
-# The six BCBS scenarios rank as follows in terms of adverse impact on a
-# long-duration bond like this 10-year bullet:
+# With the sign convention stated (negative $\Delta$EVE = loss), the six
+# scenarios rank as follows for this long-duration bond:
 #
-# 1. **Parallel up** (largest loss): Shifts all discount factors downward
-#    (rates up), reducing present value uniformly across all cash flows.
-# 2. **Steepener** (second-largest loss for this bullet): short-end rates fall
-#    while long-end rates rise, so the curve slope increases. A ten-year bullet
-#    holds most of its present value in the redemption payment, so the long-end
-#    rise dominates and the position loses; the short-end fall returns only a
-#    small offsetting gain on the near-dated coupons.
-# 3. **Short-rate up** (intermediate): Exponentially decaying with tenor, so
-#    short-end rises sharply but long-end is milder; net effect is moderate for
-#    a 10-year bond.
-# 4. **Flattener** (gain): short-end rates rise while long-end rates fall, so the
-#    curve slope decreases. The mirror of the steepener: the long-end fall lifts
-#    the redemption payment, and the short-end rise costs comparatively little on
-#    the near-dated coupons.
-# 5. **Short-rate down** and **Parallel down** (gains): Both benefit a
-#    duration-positive bond.
+# 1. **Parallel up** — the largest loss: a uniform rate rise reduces the
+#    present value of every cash flow.
+# 2. **Steepener** — the second-largest loss: short rates fall (a small gain
+#    on the near coupons) while long rates rise (a large loss on the
+#    redemption payment).
+# 3. **Short up** — an intermediate loss: the exponentially decaying shock is
+#    large at the short end but milder where this bond's value sits.
+# 4. **Flattener** — a gain: the mirror of the steepener, long rates fall.
+# 5. **Short down** — a smaller gain: short rates fall, which helps the early
+#    coupons but barely touches the 10-year redemption.
+# 6. **Parallel down** — the largest gain: a uniform rate fall.
 #
-# This ranking is specific to a long-duration bond near the positive-convexity
-# region; putable bonds, callable bonds, and floating-rate notes would show
-# different vulnerability profiles.
+# This ranking is specific to a long-duration bullet near the positive-
+# convexity region; callable, putable, or floating-rate books would show
+# different profiles.
+#
+# ### The PCA factors
+#
+# The three components explain most of the historical variance (about 73%,
+# 10% and 10%), and on this history each loading's sign pattern matches the
+# economic criterion for its position — no sign change, one sign change, two
+# sign changes — so the API names them level, slope and curvature rather than
+# the neutral PC1/PC2/PC3. The loading-shape diagnostics are printed so the
+# naming decision is transparent. Note the unit-norm convention: a 1.0 shift
+# "along the direction" is a 1.0 move of the *unit-norm loading*, which for
+# level is roughly a 30 bp parallel move, so the direction duration (years
+# per 1.0 shift) is not the parallel duration. The economically meaningful
+# number is the one-sigma exposure, which multiplies the direction duration
+# by the component's empirical standard deviation and so keeps the scale of
+# the history.
+#
+# ### VaR and expected shortfall
+#
+# The VaR/ES pair is a *linearized delta proxy* on a CMT-implied history: the
+# bond's bucket exposures at the valuation date are contracted with daily
+# yield changes. It is not a full revaluation, not a regulatory measure, and
+# not even an observed funding-rate history — it is a volatility proxy, and
+# the honest reading is "this is how big a one-day move the *proxy* thinks
+# the book could take", not a prediction about tomorrow. The conventions are
+# those of `yieldcurve.risk.portfolio.var_es`: losses are the negated P&L
+# observations, both numbers are non-negative loss magnitudes, and ES — the
+# mean of the tail beyond VaR — is never the smaller of the two. The pinned
+# asymmetric example makes the tail behaviour explicit: three large losses
+# hide beyond the 90th percentile, and only ES sees them.
 
 # %% [markdown]
 # ## Limitations
 #
-# 1. **Bump size linearity assumption:** KRDs are computed using a finite bump
-#    (1 bp); actual bond sensitivity is nonlinear due to convexity. The finite
-#    bump captures first-order (linear) duration but misses second-order
-#    (convexity) effects. Large shocks (e.g., a ±200bp BCBS scenario) introduce
-#    a small convexity error; we report the first-order sensitivity only.
-#
-# 2. **Basis structure:** The methodology assumes a fixed basis (3M SOFR spread
-#    over OIS) at all tenors. In reality, basis widens at longer tenors and
-#    changes over time. The DV01 reported here is specific to the snapshot's
-#    basis structure and would need updating if basis volatility is a material
-#    risk driver.
-#
-# 3. **No credit risk or liquidity premium:** The valuation assumes the 10-year
-#    bond is risk-free (discounted at OIS). Actual Treasury or agency bonds carry
-#    a liquidity premium; corporate bonds carry credit and liquidity risk. The
-#    KRD framework measures interest rate risk only.
-#
-# 4. **PCA calibration to historical data:** The PCA factors (level, slope,
-#    curvature) are computed from the snapshot's single curve date (24 July 2026).
-#    A production system would recalibrate PCA monthly or quarterly using rolling
-#    windows of historical data. The principal components published here are
-#    *spot* factors, not regime-stable factors.
-#
-# 5. **Regulatory scenario calibration:** BCBS d368 shock magnitudes and shapes
-#    were calibrated to pre-2020 crisis data. Post-pandemic rate regimes (e.g.,
-#    inverted curves, rapid tightening cycles) may produce shocks outside the
-#    BCBS distribution. Use these scenarios as a baseline, not as a ceiling on
-#    tail risk.
-#
-# 6. **No market-impact or execution slippage:** The P&L reported assumes the
-#    bond can be hedged or liquidated at the model prices (OIS-discounted, no
-#    bid-ask spread). Real execution would incur transaction costs and market
-#    impact, especially for large positions.
+# 1. **Finite-bump linearity:** KRDs and effective duration are first-order
+#    measures computed with a 1 bp finite bump; convexity is not reported.
+#    The scenario exhibits revalue the book under shocks up to 200 bp, so
+#    their $\Delta$EVE is a full revaluation and includes convexity — which
+#    is exactly why the scenario losses are not simply duration times shock.
+# 2. **Fixed basis structure:** the methodology assumes the snapshot's
+#    forecast basis at all tenors; basis changes over time are not modelled.
+#    The numbers are specific to the 24 July 2026 snapshot.
+# 3. **No credit or liquidity risk:** the bond is discounted at OIS as if
+#    risk-free. Treasury bonds carry a liquidity premium in reality; the
+#    risk diagnostics measure interest-rate risk only.
+# 4. **PCA calibration window:** the components are fitted to one 5-year
+#    daily history (2021-2026) and are not regime-stable or guaranteed to
+#    generalise; the naming depends on loading shapes that can change with
+#    the window.
+# 5. **Illustrative scenarios:** the six shocks use the EU 2024/856 Annex
+#    Part A USD sizes and Article 1(1) shapes with the Article 3(7) floor.
+#    They are illustrative educational exhibits — neither a baseline nor a
+#    ceiling on tail risk, not a supervisory outlier test, and not
+#    regulatory-applicable to anything this repository produces.
+# 6. **Linearized risk proxy:** the VaR/ES numbers are a first-order delta
+#    proxy on a CMT-implied history, not a full revaluation and not an
+#    observed funding-rate history; treat them as a volatility proxy only.
+# 7. **No execution costs:** the $\Delta$EVE exhibits assume the book can be
+#    liquidated at model prices with no bid-ask spread or market impact.
 
 # %% [markdown]
 # ## Summary
 #
-# This notebook validates two core identities in yield-curve risk measurement:
+# This notebook demonstrates the risk diagnostics in `yieldcurve.risk` on one
+# 10-year US Treasury bond:
 #
-# 1. **KRD completeness:** The sum of key-rate durations equals effective duration
-#    (to within numerical precision), confirming that the triangular-hat basis is
-#    a valid decomposition of curve sensitivity.
+# 1. **DV01** as a positive loss per 1 bp rise, in USD per 100 face.
+# 2. **Duration conventions** named correctly: effective (parallel-shift
+#    central difference), Fisher-Weil (spot-curve-weighted), and Macaulay
+#    (YTM-weighted).
+# 3. **Key-rate durations** in price-bp per yield-bp, whose sum reconciles
+#    to the effective duration to within the $O(\text{bump}^2)$ truncation
+#    error of the central differences — measured at about 6e-8 years.
+# 4. **Principal components** of the CMT yield-change history, with
+#    economically named level/slope/curvature components only where the
+#    loading-shape criteria pass, direction durations and one-sigma exposures
+#    kept as separate, explicitly unit-ed quantities.
+# 5. **The six EU 2024/856 supervisory shock shapes** applied as an
+#    illustrative Delta EVE comparison, with the regulatory boundary stated.
+# 6. **A linearized delta VaR/ES proxy** on a CMT-implied history, with the
+#    loss-positive convention, plus an independently pinned asymmetric-loss
+#    example and a face/notional scaling example.
 #
-# 2. **Regulatory scenario applicability:** The six BCBS d368 shocks (parallel,
-#    short-rate, steepener/flattener) can be applied reproducibly to any
-#    continuously compounded curve, and the resulting P&L is economically
-#    meaningful for a 10-year Treasury-like instrument.
-#
-# The toolkit is ready for production portfolio risk reporting, subject to the
-# limitations noted above (convexity, basis volatility, credit risk, PCA
-# recalibration cadence, and market-impact modeling). For a bank with a large
-# fixed-income book, this framework scales: compute KRD for every bond in the
-# portfolio, aggregate by tenor bucket, and feed the risk ladder into the
-# counterparty and capital models.
+# Everything here is an educational demonstration on a frozen snapshot: the
+# toolkit is not a production risk platform, nothing here is a regulatory
+# disclosure or an outlier test, and no capital number is computed.
