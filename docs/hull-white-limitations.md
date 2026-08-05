@@ -3,9 +3,9 @@
 The Hull-White one-factor model in `yieldcurve.models.hullwhite` is used in
 this project for two things: pricing European swaptions against the packaged
 ATM normal-volatility grid, and simulating short-rate paths whose
-trapezoid-averaged integrals approximate path discount factors. This document
-records what the model **cannot** do, so that it is used within its known
-boundaries.
+trapezoid-averaged integrals approximate path discount factors — the
+monthly path-discount approximation of §6. This document records what the
+model **cannot** do, so that it is used within its known boundaries.
 
 Each limitation below names a specific consequence and, where possible, gives a
 quantified measure of its magnitude.
@@ -54,9 +54,10 @@ short-rate simulation and swaption pricing only.
 independent quotes. A co-terminal ATM strip is the standard compromise: it is
 the set Hull-White can genuinely match.
 
-The calibration RMSE on the co-terminal ATM strip is a measure of fit quality,
-not a measure of modelling error. What was not fitted — the smile across
-strikes, the full expiry-tenor grid — is not captured by this model.
+The calibration RMSE in notebook 06 — about 6.5 bp against the packaged
+7-expiry by 4-tenor illustrative grid — is a measure of fit quality, not a
+measure of modelling error. What was not fitted — the smile across strikes,
+the full expiry-tenor grid — is not captured by this model.
 
 ## 4. Constant `σ` produces no volatility smile
 
@@ -83,7 +84,8 @@ mean-reverting behaviour in the short rate.
 ## 6. Path discount factors are an approximation, not exact bond prices
 
 `simulate_path_discount_factors` returns `exp(−∫ r(s) ds)` computed by the
-trapezoid rule on a monthly grid (the default), which carries an O(step²)
+trapezoid rule on a monthly grid (the default) — the monthly path-discount
+approximation demonstrated in notebook 06 — which carries an O(step²)
 time-step bias relative to the exact zero-coupon bond price
 `P(t,T) = A(t,T)·exp(−B(t,T)·r(t))`. The short rate itself is sampled exactly
 (Gaussian transition, no discretisation bias); the trapezoid integral is the
