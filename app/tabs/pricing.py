@@ -36,6 +36,7 @@ def render(state: AppState) -> None:
         options=range(len(bonds)),
         format_func=lambda i: bond_label(bonds[i]),
         key=_BOND_KEY,
+        help="Selects the bond priced here and analysed on the Risk tab.",
     )
     bond = bonds[index]
 
@@ -43,12 +44,12 @@ def render(state: AppState) -> None:
     result = price(bond, curves, state.asof)
 
     left, middle, right = st.columns(3)
-    left.metric("Clean price", f"{result.clean:.6f}")
-    middle.metric("Accrued", f"{result.accrued:.6f}")
-    right.metric("Dirty price", f"{result.dirty:.6f}")
+    left.metric("Clean price (per 100 face)", f"{result.clean:.6f}")
+    middle.metric("Accrued (per 100 face)", f"{result.accrued:.6f}")
+    right.metric("Dirty price (per 100 face)", f"{result.dirty:.6f}")
     st.caption("Per 100 face. Clean plus accrued is dirty, exactly, by construction.")
 
-    st.metric("Yield to maturity", f"{ytm(bond, result.dirty, state.asof) * 100:.4f}%")
+    st.metric("Yield to maturity (% p.a.)", f"{ytm(bond, result.dirty, state.asof) * 100:.4f}%")
     st.caption(
         "Yield to maturity is a quoting device on the street convention, not a term "
         "structure. Its exponents are `w + k` — a first fractional period followed by whole "
@@ -74,5 +75,6 @@ def render(state: AppState) -> None:
     st.dataframe(table, use_container_width=True, hide_index=True)
     st.caption(
         f"Flows sum to {total:.6f} against a dirty price of {result.dirty:.6f} — the visible "
-        "proof that the pricer is doing nothing but discounting."
+        "proof that the pricer is doing nothing but discounting. Amounts and PVs are in "
+        "SEK per 100 face."
     )

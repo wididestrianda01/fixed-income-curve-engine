@@ -76,9 +76,9 @@ _PATH_TOKEN = re.compile(
 )
 
 _METHOD_LABELS = {
-    InterpMethod.MONOTONE_CONVEX: "Monotone convex (default)",
-    InterpMethod.CUBIC_LOG_DF: "Cubic on log discount factors",
-    InterpMethod.LOG_LINEAR_DF: "Log-linear on discount factors",
+    InterpMethod.MONOTONE_CONVEX: "Monotone convex (comparative overlay)",
+    InterpMethod.CUBIC_LOG_DF: "Cubic on log discount factors (comparative overlay)",
+    InterpMethod.LOG_LINEAR_DF: "Log-linear on discount factors (canonical calibration)",
 }
 
 
@@ -97,13 +97,21 @@ def build_sidebar() -> AppState:
         help="One snapshot is committed to the repository. The app never fetches data.",
     )
     method = st.sidebar.selectbox(
-        "Interpolation",
+        "Interpolation method (all tabs)",
         options=list(_METHOD_LABELS),
         format_func=lambda m: _METHOD_LABELS[m],
+        help=(
+            "Global: every curve in every tab is rebuilt with this method. The package's "
+            "canonical calibration is log-linear on discount factors; monotone convex and "
+            "cubic log-DF are comparative overlays whose quote residuals are measured and "
+            "shown on the Curve tab."
+        ),
     )
     st.sidebar.caption(
-        "Monotone convex keeps forwards positive but is not linear in the inputs, so "
-        "risk ladders built under it do not add up exactly. The two smooth methods do."
+        "Monotone convex gives continuous forwards but is not linear in its inputs, so "
+        "risk ladders built under it do not add up exactly (about 1.4% on this book); "
+        "log-linear and cubic do add up. The canonical build is log-linear on discount "
+        "factors."
     )
     load_snapshot()  # fail fast: validate the packaged snapshot before any tab renders
     return AppState(asof=SNAPSHOT_DATE, method=method)

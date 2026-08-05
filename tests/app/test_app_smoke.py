@@ -70,15 +70,24 @@ def test_curve_tab_ten_year_zero_matches_the_library() -> None:
 
 
 def test_pricing_tab_shows_the_three_price_components(app: AppTest) -> None:
-    assert {"Clean price", "Accrued", "Dirty price", "Yield to maturity"} <= _labels(app)
+    assert {
+        "Clean price (per 100 face)",
+        "Accrued (per 100 face)",
+        "Dirty price (per 100 face)",
+        "Yield to maturity (% p.a.)",
+    } <= _labels(app)
 
 
 def test_pricing_tab_clean_plus_accrued_equals_dirty(app: AppTest) -> None:
-    _price_metrics = {"Clean price", "Accrued", "Dirty price"}
+    _price_metrics = {
+        "Clean price (per 100 face)",
+        "Accrued (per 100 face)",
+        "Dirty price (per 100 face)",
+    }
     by_label = {m.label: float(m.value) for m in app.metric if m.label in _price_metrics}
-    assert by_label["Clean price"] + by_label["Accrued"] == pytest.approx(
-        by_label["Dirty price"], abs=1e-9
-    )
+    assert by_label["Clean price (per 100 face)"] + by_label[
+        "Accrued (per 100 face)"
+    ] == pytest.approx(by_label["Dirty price (per 100 face)"], abs=1e-9)
 
 
 def test_pricing_tab_bond_universe_stops_at_the_last_curve_pillar() -> None:
@@ -89,7 +98,9 @@ def test_pricing_tab_bond_universe_stops_at_the_last_curve_pillar() -> None:
 
 
 def test_risk_tab_shows_both_duration_families(app: AppTest) -> None:
-    assert {"DV01", "Modified duration", "Effective duration"} <= _labels(app)
+    labels = _labels(app)
+    assert any(label.startswith("DV01") and "1 bp" in label for label in labels)
+    assert {"Modified duration (years)", "Effective duration (years)"} <= labels
 
 
 def test_risk_tab_discloses_the_interpolated_sek_one_year_point(app: AppTest) -> None:
@@ -97,7 +108,7 @@ def test_risk_tab_discloses_the_interpolated_sek_one_year_point(app: AppTest) ->
     assert "interpolated, not observed" in body
 
 
-def test_irrbb_board_runs_all_six_bcbs_scenarios() -> None:
+def test_eu_2024_856_scenarios_run_all_six_shocks() -> None:
     from app.data import portfolio, sek_curveset
     from yieldcurve.curves.interpolation import InterpMethod
     from yieldcurve.risk.portfolio import eve_ladder
@@ -116,8 +127,8 @@ def test_irrbb_board_runs_all_six_bcbs_scenarios() -> None:
 
 def test_risk_tab_reports_var_and_expected_shortfall(app: AppTest) -> None:
     labels = _labels(app)
-    assert any(label.startswith("VaR") for label in labels)
-    assert any(label.startswith("Expected shortfall") for label in labels)
+    assert any(label.startswith("Linearized delta VaR") for label in labels)
+    assert any(label.startswith("Linearized delta ES") for label in labels)
 
 
 def test_expected_shortfall_never_falls_below_var_at_either_confidence() -> None:
@@ -194,8 +205,9 @@ def test_beyond_tab_says_the_volatilities_are_illustrative(app: AppTest) -> None
         + " ".join(c.value for c in app.caption)
     )
     assert "illustrative" in rendered.lower()
-    assert "Information License Agreement" in rendered
-    # MKT-04: the disclosure must not claim a market/cme.py module still exists.
+    assert "licensed" in rendered.lower()
+    # MKT-04/MKT-15: no stale CME redistribution claim remains on screen.
+    assert "CME" not in rendered
     assert "cme.py" not in rendered
 
 
@@ -347,3 +359,98 @@ def test_expensive_calibration_is_cached_and_the_method_control_is_global(
     at.run()  # unchanged choice: the rerun must reuse the cached calibration
     assert calls["n"] == n_cubic
     assert len(at.exception) == 0
+
+
+def _rendered(app: AppTest) -> str:
+    """Every text element the browser shows, joined — the rendered-value surface."""
+    return (
+        " ".join(m.value for m in app.markdown)
+        + " ".join(c.value for c in app.caption)
+        + " ".join(w.value for w in app.warning)
+        + " ".join(i.value for i in app.info)
+    )
+
+
+def test_sidebar_labels_the_interpolation_control_scope(app: AppTest) -> None:
+    """The global interpolation control states its actual scope in its label."""
+    assert "all tabs" in app.sidebar.selectbox[0].label
+
+
+def test_curve_tab_distinguishes_canonical_calibration_from_overlays(app: AppTest) -> None:
+    rendered = _rendered(app)
+    assert "canonical" in rendered
+    assert "overlay" in rendered
+
+
+def test_curve_tab_shows_quote_repricing_residuals(app: AppTest) -> None:
+    """Task 4's repricing_report renders as a visible table with residual columns."""
+    columns = [list(d.value.columns) for d in app.dataframe]
+    assert any(any("Residual (bp" in c for c in col) for col in columns), columns
+    assert any(any("Target rate" in c for c in col) for col in columns), columns
+
+
+def test_curve_tab_states_the_svensson_fit_target(app: AppTest) -> None:
+    rendered = " ".join(c.value for c in app.caption)
+    assert "bootstrapped zero rates" in rendered
+    assert "grid" in rendered
+
+
+def test_curve_tab_corrects_the_monotone_convex_positivity_claim(app: AppTest) -> None:
+    """The library's monotone-convex overlay omits the Hagan-West positivity
+    amendment and can represent negative forwards — the app must mirror that."""
+    rendered = _rendered(app)
+    assert "negative forwards" in rendered
+    assert "keeps the forwards positive" not in rendered
+
+
+def test_curve_tab_empty_selection_shows_an_empty_state() -> None:
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    at.multiselect[0].set_value([])
+    at.run()
+    rendered = " ".join(i.value for i in at.info)
+    assert "Select at least one interpolation method" in rendered
+    assert len(at.exception) == 0
+
+
+def test_risk_tab_is_illustrative_delta_eve_not_the_irrbb_board(app: AppTest) -> None:
+    rendered = _rendered(app)
+    # Δ (U+0394) lowercases to δ, so do not lowercase the whole string for this check.
+    assert "illustrative ΔEVE" in rendered
+    assert "IRRBB board" not in rendered
+    assert "debt office" not in rendered
+    assert "cannot be too small" not in rendered
+
+
+def test_risk_tab_discloses_the_invented_capital_denominator(app: AppTest) -> None:
+    rendered = _rendered(app)
+    assert "not regulatory capital" in rendered
+    assert "outlier" not in rendered.lower()
+    assert not any("Tier 1" in label for label in _labels(app))
+
+
+def test_risk_tab_uses_current_eu_citations_only(app: AppTest) -> None:
+    rendered = _rendered(app)
+    assert "2024/856" in rendered
+    assert "BCBS" not in rendered
+    assert "d368" not in rendered
+    assert "GL/2018" not in rendered
+
+
+def test_risk_tab_var_es_are_named_linearized_delta_proxy(app: AppTest) -> None:
+    rendered = _rendered(app)
+    assert "linearized delta" in rendered.lower()
+    assert "proxy" in rendered
+
+
+def test_beyond_tab_discloses_constructed_curves(app: AppTest) -> None:
+    rendered = _rendered(app)
+    assert "constructed" in rendered.lower()
+    assert "not observed" in rendered.lower()
+
+
+def test_beyond_tab_metrics_carry_units(app: AppTest) -> None:
+    labels = _labels(app)
+    assert any("1/yr" in label for label in labels)
+    assert any("1/√yr" in label for label in labels)
+    assert any(label.startswith("Residual (bp") for label in labels)

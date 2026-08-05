@@ -62,8 +62,21 @@ def _section_a(state: AppState) -> None:
     )
     st.caption(
         "The basis chart is the price of the distinction: what a government curve says a "
-        "cash flow is worth, minus what the swap market says."
+        "cash flow is worth, minus what the swap market says. Both curves and the basis "
+        "are **constructed** from the packaged snapshot (see `DATA_SOURCES.md`) — not "
+        "observed live quotes."
     )
+    with st.expander("Government-swap basis by tenor (data)"):
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Tenor (y)": [f"{t:g}" for t in basis],
+                    "Government-swap basis (bp)": [v * _BP for v in basis.values()],
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def _section_b() -> None:
@@ -81,24 +94,33 @@ def _section_b() -> None:
     for column, name, ratio in zip(
         columns, _COMPONENT_NAMES, result.explained_variance_ratio, strict=True
     ):
-        column.metric(f"{name} — variance explained", f"{ratio * 100:.1f}%")
+        column.metric(f"{name} — variance explained (% of centred variance)", f"{ratio * 100:.1f}%")
 
     st.plotly_chart(
         overlay_figure(
             {
-                name: (list(result.tenors), result.loadings[:, i].tolist())
+                name: (list(result.tenors), result.loadings[i, :].tolist())
                 for i, name in enumerate(_COMPONENT_NAMES)
             },
-            y_title="Loading",
+            y_title="Component loading (unit-norm, dimensionless)",
         ),
         use_container_width=True,
     )
     st.caption(
-        f"{result.n_observations} daily observations. PCA is a statistical decomposition, "
-        "not an arbitrage-free model: it describes how the curve has moved, and it cannot "
-        "price anything. That is the division of labour with the next section — Hull-White "
-        "prices, PCA describes."
+        f"{result.n_observations} daily observations of US Treasury CMT par-yield changes "
+        "(a USD proxy — the snapshot holds no SEK rate history). PCA is a statistical "
+        "decomposition, not an arbitrage-free model: it describes how the curve has moved, "
+        "and it cannot price anything. That is the division of labour with the next "
+        "section — Hull-White prices, PCA describes."
     )
+    with st.expander("Component loadings (data)"):
+        st.dataframe(
+            pd.DataFrame(
+                {name: result.loadings[i, :].tolist() for i, name in enumerate(_COMPONENT_NAMES)},
+                index=[f"{t:g}y" for t in result.tenors],
+            ),
+            use_container_width=True,
+        )
 
 
 def _section_c(state: AppState) -> None:
@@ -111,10 +133,9 @@ def _section_c(state: AppState) -> None:
     )
     st.warning(
         "**The volatilities below are illustrative, not market data.** Real cleared-"
-        "swaption settlement volatility surfaces are licensed — a CME Information License "
-        "Agreement covers CME Group's settlement vols — and are not redistributed here. "
-        "This grid is constructed from a closed form stated in the CSV header and in "
-        "`DATA_SOURCES.md`. What follows therefore demonstrates how well a two-parameter "
+        "swaption settlement volatility surfaces are licensed and are not redistributed "
+        "here. This grid is constructed from a closed form stated in the CSV header and "
+        "in `DATA_SOURCES.md`. What follows therefore demonstrates how well a two-parameter "
         "model spans a surface; it is not a fit to traded prices."
     )
 
@@ -122,9 +143,9 @@ def _section_c(state: AppState) -> None:
     fit = hullwhite_calibration(state.asof, state.method)
 
     a, b, c = st.columns(3)
-    a.metric("Calibrated a", f"{fit.a:.5f}")
-    b.metric("Calibrated sigma", f"{fit.sigma:.5f}")
-    c.metric("Residual (bp)", f"{fit.rmse_vol_bp:.2f}")
+    a.metric("Calibrated a (1/yr)", f"{fit.a:.5f}")
+    b.metric("Calibrated sigma (1/√yr)", f"{fit.sigma:.5f}")
+    c.metric("Residual (bp, illustrative grid)", f"{fit.rmse_vol_bp:.2f}")
 
     table = pd.DataFrame(
         {
@@ -146,15 +167,29 @@ def _section_c(state: AppState) -> None:
     )
 
     st.markdown("**What the two parameters do** — sliders below drive the illustration only.")
-    slider_a = st.slider("Mean reversion a", 0.001, 0.50, float(fit.a), 0.001)
-    slider_sigma = st.slider("Volatility sigma", 0.0001, 0.05, float(fit.sigma), 0.0001)
+    slider_a = st.slider(
+        "Mean reversion a (1/yr)",
+        0.001,
+        0.50,
+        float(fit.a),
+        0.001,
+        help="Drives the illustration only; not part of the calibration above.",
+    )
+    slider_sigma = st.slider(
+        "Volatility sigma (1/√yr)",
+        0.0001,
+        0.05,
+        float(fit.sigma),
+        0.0001,
+        help="Drives the illustration only; not part of the calibration above.",
+    )
     model = HullWhite(curve=curves.discount, a=slider_a, sigma=slider_sigma)
     times = [0.0, *np.linspace(0.25, 10.0, 40).tolist()]
     paths = model.simulate(times, n_paths=25, seed=20260803)
     st.plotly_chart(
         overlay_figure(
-            {f"path {i}": (times, paths[i].tolist()) for i in range(paths.shape[0])},
-            y_title="Short rate",
+            {f"path {i}": (times, [v * 100.0 for v in paths[i]]) for i in range(paths.shape[0])},
+            y_title="Short rate (%)",
         ),
         use_container_width=True,
     )

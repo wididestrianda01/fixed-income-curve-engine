@@ -7,7 +7,7 @@ from typing import cast
 import pandas as pd
 import streamlit as st
 
-from app.charts import bar_figure, histogram_figure
+from app.charts import ADVERSE, PALETTE, bar_figure, histogram_figure
 from app.data import (
     VAR_WINDOW,
     cmt_history,
@@ -40,8 +40,10 @@ from yieldcurve.risk.sensitivities import (
 )
 
 TIER1_CAPITAL = 4_000_000_000.0
-"""Illustrative, and committed alongside the demo portfolio. It exists to give the 15%
-outlier threshold something to divide by."""
+"""Illustrative, and committed alongside the demo portfolio. It exists only to
+give the dashed reference line on the ΔEVE chart something to divide by. It is
+an invented number — not regulatory capital — and no supervisory threshold is
+applied anywhere in the app."""
 
 _OUTLIER_FRACTION = 0.15
 _SMOOTH_METHODS = (InterpMethod.CUBIC_LOG_DF, InterpMethod.LOG_LINEAR_DF)
@@ -59,24 +61,33 @@ def _section_a(state: AppState) -> None:
     curves = sek_curveset(state.asof, state.method)
 
     a, b, c = st.columns(3)
-    a.metric("DV01", f"{dv01(bond, curves, state.asof):.6f}")
-    b.metric("Modified duration", f"{modified_duration(bond, curves, state.asof):.4f}")
-    c.metric("Effective duration", f"{effective_duration(bond, curves, state.asof):.4f}")
+    a.metric("DV01 (loss per 1 bp, per 100 face)", f"{dv01(bond, curves, state.asof):.6f}")
+    b.metric("Modified duration (years)", f"{modified_duration(bond, curves, state.asof):.4f}")
+    c.metric("Effective duration (years)", f"{effective_duration(bond, curves, state.asof):.4f}")
     st.caption(
-        "The two durations differ because they answer different questions. Modified "
-        "duration assumes a parallel move in the bond's own yield and is analytic in that "
-        "yield. Effective duration reprices the bond off a bumped curve, so it carries "
-        "whatever the interpolation scheme does between pillars. On a par bond under a flat "
-        "curve they agree; away from that they need not."
+        "DV01 is the positive loss a long position takes when rates rise 1 bp — base "
+        "price minus the +1 bp price — in SEK per 100 face. The two durations differ "
+        "because they answer different questions. Modified duration assumes a parallel "
+        "move in the bond's own yield and is analytic in that yield. Effective duration "
+        "reprices the bond off a bumped curve, so it carries whatever the interpolation "
+        "scheme does between pillars. On a par bond under a flat curve they agree; away "
+        "from that they need not."
     )
 
     d, e = st.columns(2)
-    d.metric("Convexity", f"{convexity(bond, curves, state.asof):.4f}")
-    e.metric("Effective convexity", f"{effective_convexity(bond, curves, state.asof):.4f}")
+    d.metric(
+        "Convexity (per 1.0 rate², library convention)",
+        f"{convexity(bond, curves, state.asof):.4f}",
+    )
+    e.metric(
+        "Effective convexity (per 1.0 rate², library convention)",
+        f"{effective_convexity(bond, curves, state.asof):.4f}",
+    )
     st.caption(
-        "Convexity conventions differ between vendors by factors of two and by whether the "
-        "frequency scaling is included. This one is the library's own. Compare the price "
-        "change it predicts, not the number."
+        "Convexity units are per (1.0 decimal rate change)², and conventions differ "
+        "between vendors by factors of two and by whether the frequency scaling is "
+        "included. This one is the library's own. Compare the price change it predicts, "
+        "not the number."
     )
 
 
@@ -86,13 +97,24 @@ def _section_b(state: AppState) -> None:
     curves = sek_curveset(state.asof, state.method)
 
     left, right = st.columns(2)
-    ladder = krd(bond, curves, state.asof, SEK_KEY_RATES)
     with left:
+        try:
+            ladder = krd(bond, curves, state.asof, SEK_KEY_RATES)
+        except ValueError:
+            # A par swap prices at zero, so its normalized KRD is undefined (the
+            # library raises). The monetary ladders below stay defined — say so
+            # instead of letting the tab fail.
+            st.info(
+                "Key-rate duration is undefined for this instrument: it prices at zero "
+                "(a par swap), so normalizing by its present value is meaningless. The "
+                "par-rate ladder and the portfolio bucket exposures stay defined."
+            )
+            ladder = {}
         st.plotly_chart(
             bar_figure(
                 [f"{k:g}y" for k in ladder],
                 list(ladder.values()),
-                y_title="Key-rate duration (years)",
+                y_title="Key-rate duration (price-bp per yield-bp)",
             ),
             use_container_width=True,
         )
@@ -107,7 +129,7 @@ def _section_b(state: AppState) -> None:
             bar_figure(
                 [f"{d:%Y-%m}" for d in par],
                 list(par.values()),
-                y_title="Par-rate delta",
+                y_title="Par-rate delta (per 100 face per 1 bp)",
             ),
             use_container_width=True,
         )
@@ -127,12 +149,31 @@ def _section_b(state: AppState) -> None:
     st.caption(
         "These two ladders do not agree entry by entry, and they are not supposed to. A "
         "bump to the 5y par quote moves every zero out to five years; a key-rate hat moves "
-        "a triangle centred on one maturity. They are different questions. " + additivity
+        "a triangle centred on one maturity. They are different questions. Units: key-rate "
+        "duration is in price-bp per yield-bp — numerically equal to years of duration, "
+        "not multiplied by 100 — and the par-rate ladder is in price per 100 face per 1 bp "
+        "rise in the quoted instrument. " + additivity
     )
+
+    with st.expander("Ladder data"):
+        ladder_frame = pd.DataFrame(
+            {
+                "Key rate (y)": [f"{k:g}" for k in ladder],
+                "KRD (price-bp per yield-bp)": [round(v, 6) for v in ladder.values()],
+            }
+        )
+        par_frame = pd.DataFrame(
+            {
+                "Bucket (maturity)": [d.strftime("%Y-%m") for d in par],
+                "Par-rate delta (per 100 face per 1 bp)": [round(v, 6) for v in par.values()],
+            }
+        )
+        st.dataframe(ladder_frame, use_container_width=True, hide_index=True)
+        st.dataframe(par_frame, use_container_width=True, hide_index=True)
 
 
 def _section_c(state: AppState) -> None:
-    st.subheader("The IRRBB board")
+    st.subheader("Illustrative ΔEVE comparison (EU 2024/856 shocks)")
     book = portfolio()
     curves = sek_curveset(state.asof, state.method)
     scenarios = eu_scenarios("SEK")
@@ -141,68 +182,83 @@ def _section_c(state: AppState) -> None:
 
     worst_name = min(ladder, key=lambda name: ladder[name])
     worst = ladder[worst_name]
-    left, right = st.columns(2)
-    left.metric(f"Worst-case ΔEVE ({worst_name})", f"{worst:,.0f} SEK")
-    right.metric("As % of Tier 1", f"{worst / TIER1_CAPITAL * 100:.2f}%")
+    st.metric("Worst-case illustrative ΔEVE (SEK)", f"{worst:,.0f} SEK")
+    st.caption(f"Under the {worst_name} scenario.")
 
     threshold = -_OUTLIER_FRACTION * TIER1_CAPITAL
-    figure = bar_figure(list(ladder), list(ladder.values()), y_title="ΔEVE (SEK)")
+    figure = bar_figure(
+        list(ladder),
+        list(ladder.values()),
+        y_title="Illustrative ΔEVE (SEK)",
+        text_format="{:,.0f}",
+    )
     figure.add_hline(
         y=threshold,
         line_dash="dash",
-        annotation_text="-15% of Tier 1 (BCBS d368 outlier test)",
+        line_color=ADVERSE,
+        annotation_text="Illustrative reference: -15% of the invented Tier 1 proxy",
     )
     if ladder.values():
         figure.update_traces(
-            marker_color=["#c0392b" if v <= threshold else "#1f4e79" for v in ladder.values()]
+            marker_color=[ADVERSE if v <= threshold else PALETTE[0] for v in ladder.values()]
         )
     st.plotly_chart(figure, use_container_width=True)
 
     st.markdown(
-        "The six shocks are 200bp parallel, 300bp short and 150bp long, read from "
-        "`scenarios.toml`, which cites EBA GL/2018/02 Table 1 and BCBS d368 Annex 2 Table 2 "
-        "on every row. SEK falls in the same shock bucket as USD under those tables, so the "
-        "identical numbers are by design rather than by mistake. The -15% of Tier 1 line is "
-        "the supervisory outlier test from BCBS d368.\n\n"
-        "This is ΔEVE on a stylised proxy book. There are no deposits, no net interest "
-        "income, and no behavioural assumptions about non-maturity accounts. A real IRRBB "
-        "submission is a considerably larger object than this chart."
+        "The six shocks are the **EU 2024/856** supervisory scenarios — parallel up/down, "
+        "short-rate up/down, steepener and flattener — read from the packaged "
+        "`scenarios.toml`, whose rows cite Commission Delegated Regulation (EU) 2024/856 "
+        "Annex Part A for the USD/SEK parameters (200 bp parallel, 300 bp short, 150 bp "
+        "long) and apply the Article 3(7) post-shock rate floor. USD and SEK share those "
+        "parameters in the regulation, so the identical numbers are by design.\n\n"
+        "This is an **illustrative ΔEVE comparison** on a stylised, single-currency SEK "
+        "proxy book — an educational exhibit, not a regulatory EVE measure and not an "
+        "IRRBB submission. There are no deposits, no net interest income, and no "
+        "behavioural assumptions about non-maturity accounts. The dashed reference line "
+        "sits at -15% of the portfolio file's `tier1_capital`, an **invented** number "
+        "that is **not regulatory capital**; no capital is computed and no supervisory "
+        "threshold is applied."
     )
 
     rows = [
         {
             "Position": p.label,
             "Type": type(p.instrument).__name__,
-            "Notional": p.notional,
-            "Base PV": p.notional
+            "Notional (SEK)": p.notional,
+            "Base PV (SEK)": p.notional
             / float(getattr(p.instrument, "face", 1.0))
             * price(p.instrument, curves, state.asof).dirty,
         }
         for p in book.positions
     ]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption(f"Base portfolio value {base:,.0f} SEK.")
-
-    st.markdown(
-        "**The issuer's side of the same table.** ΔEVE across a maturity-laddered "
-        "government book is the bank's framing of a question a debt office asks in reverse. "
-        "A bank holding fixed-rate government paper reads the parallel-up bar as a loss of "
-        "economic value; the sovereign that issued that paper reads the same shock as the "
-        "cost of having termed out its borrowing rather than funding short. Same discount "
-        "factors, same six scenarios, opposite sign convention. Cost versus risk in debt "
-        "composition — maturity exposure, and how that choice looks under a prescribed "
-        "shock set — is the computation this board already performs."
+    st.caption(
+        f"Base portfolio value {base:,.0f} SEK — a single-currency SEK book whose "
+        "notionals are invented (see `demo_portfolio.toml`)."
     )
+
+    with st.expander("ΔEVE by scenario (data)"):
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Scenario": list(ladder),
+                    "Illustrative ΔEVE (SEK)": [f"{v:,.0f}" for v in ladder.values()],
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def _section_d(state: AppState) -> None:
-    st.subheader("What rates actually did")
+    st.subheader("What rates actually did (historical proxy)")
     st.markdown(
         "Section C is *prescribed*: a supervisor fixes the shock and the book is revalued "
         "under it. This section asks the complementary question — what did rates actually "
         "do, and what would that have done to this book. The two belong side by side "
-        "because they fail differently. A prescribed shock cannot be too small by accident; "
-        "an empirical distribution cannot contain a move the sample never saw."
+        "because they fail differently: a prescribed shock is fixed by the regulation "
+        "regardless of what markets did, while an empirical distribution cannot contain a "
+        "move the sample never saw."
     )
     st.warning(
         "**This is a volatility proxy, not a SEK VaR.** The snapshot holds no SEK rate "
@@ -224,12 +280,13 @@ def _section_d(state: AppState) -> None:
         index=1,
         format_func=lambda c: f"{c:.0%}",
         horizontal=True,
+        help="Changes the VaR/ES confidence on this tab only.",
     )
     value_at_risk, shortfall = var_es(pnl, confidence=confidence)
 
     left, right = st.columns(2)
-    left.metric(f"VaR ({confidence:.0%})", f"{value_at_risk:,.0f} SEK")
-    right.metric(f"Expected shortfall ({confidence:.0%})", f"{shortfall:,.0f} SEK")
+    left.metric(f"Linearized delta VaR ({confidence:.0%})", f"{value_at_risk:,.0f} SEK")
+    right.metric(f"Linearized delta ES ({confidence:.0%})", f"{shortfall:,.0f} SEK")
 
     st.plotly_chart(
         histogram_figure(
@@ -242,9 +299,18 @@ def _section_d(state: AppState) -> None:
     dates = sorted(cmt_history()["date"].unique())[-VAR_WINDOW:]
     st.caption(
         f"{pnl.size} daily observations, {dates[0]} to {dates[-1]}, from "
-        "`fred_treasury_cmt_history.csv`. Expected shortfall is the mean of the tail beyond "
-        "VaR, so it can never be the smaller of the two."
+        "`fred_treasury_cmt_history.csv` (US Treasury CMT par yields). P&L is first-order "
+        "— bucket exposures revalued linearly, with no full revaluation — so both numbers "
+        "are a **linearized delta proxy**, not a regulatory VaR. Expected shortfall is the "
+        "mean of the tail beyond VaR, so it can never be the smaller of the two."
     )
+
+    with st.expander("Daily P&L observations (data)"):
+        st.dataframe(
+            pd.DataFrame({"Daily P&L (SEK)": pnl.tolist()}),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render(state: AppState) -> None:
