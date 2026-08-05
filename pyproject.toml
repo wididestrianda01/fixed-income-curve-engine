@@ -138,7 +138,7 @@ warn_unused_ignores = false
 files = ["src", "tests", "app.py"]
 
 [[tool.mypy.overrides]]
-module = ["QuantLib.*", "scipy.*", "streamlit.*", "plotly.*"]
+module = ["QuantLib.*", "scipy.*", "streamlit.*", "plotly.*", "jupytext"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

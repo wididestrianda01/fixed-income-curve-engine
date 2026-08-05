@@ -1,5 +1,11 @@
 """End-to-end regression: the whole pipeline against pinned values.
 
+The pinned pipeline runs builders on their canonical log-linear discount-factor
+default (no ``method=`` overlay), so the fixture tracks the calibration
+contract the package actually ships. A value change must trace to a corrected
+contract — bootstrap/interpolation, pricing, scenario, or risk — never to
+cosmetic drift.
+
 Regenerate deliberately, never reflexively:
 
     python scripts/write_golden.py

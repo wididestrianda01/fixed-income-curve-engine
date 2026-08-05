@@ -1,11 +1,15 @@
 """Generate the golden-file pipeline regression values.
 
-Run when a deliberate change moves the numbers:
+The pipeline pins the canonical calibration contract: builders run on their
+log-linear discount-factor default (no ``method=`` overlay). Run when a
+deliberate contract change moves the numbers:
 
     python scripts/write_golden.py
 
-A diff in tests/golden/pipeline_v1.json means a number moved. Find out why before
-you accept it — that is the entire value of this file.
+A diff in tests/golden/pipeline_v1.json means a number moved. Find out why
+before you accept it — every changed value must trace to a corrected contract
+(bootstrap/interpolation, pricing, scenario, or risk); never regenerate for
+cosmetic drift. That is the entire value of this file.
 """
 
 from __future__ import annotations
@@ -23,7 +27,6 @@ from yieldcurve.curves.build import (
     sek_government_curve,
     usd_ois_curve,
 )
-from yieldcurve.curves.interpolation import InterpMethod
 from yieldcurve.curves.parametric import Svensson
 from yieldcurve.curves.pricing import price, ytm
 from yieldcurve.curves.protocol import CurveSet
@@ -36,7 +39,6 @@ from yieldcurve.risk.scenarios import eu_scenarios
 from yieldcurve.risk.sensitivities import dv01, effective_duration
 
 ASOF = date(2026, 7, 24)
-METHOD = InterpMethod.MONOTONE_CONVEX
 SNAPSHOT = Snapshot(date=ASOF)
 GOLDEN = Path(__file__).resolve().parents[1] / "tests" / "golden" / "pipeline_v1.json"
 
@@ -45,7 +47,7 @@ def compute() -> dict[str, float]:
     result: dict[str, float] = {}
 
     # SEK curve
-    sek = sek_government_curve(SNAPSHOT, ASOF, method=METHOD)
+    sek = sek_government_curve(SNAPSHOT, ASOF)
     result["sek.zero.2y"] = sek.zero(2.0)
     result["sek.zero.10y"] = sek.zero(10.0)
 
@@ -82,7 +84,7 @@ def compute() -> dict[str, float]:
         result[key] = delta_eve(book, curves, ASOF, scenario)
 
     # USD basis
-    basis = government_swap_basis(SNAPSHOT, ASOF, (10.0,), method=METHOD)
+    basis = government_swap_basis(SNAPSHOT, ASOF, (10.0,))
     result["usd.basis.10y"] = basis[10.0]
 
     # PCA
