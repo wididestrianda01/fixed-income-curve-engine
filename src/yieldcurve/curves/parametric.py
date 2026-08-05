@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import OptimizeResult, differential_evolution
 
 _SEED = 20260727
@@ -115,20 +116,38 @@ def _ns_zero(t: float, b0: float, b1: float, b2: float, tau: float) -> float:
     return b0 + b1 * loading + b2 * (loading - math.exp(-t / tau))
 
 
-def _svensson_zeros(t: np.ndarray, p: np.ndarray) -> np.ndarray:
+def _exp(x: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    """Elementwise ``math.exp`` (not numpy's SIMD exp) so the vectorized
+    models reproduce the scalar ``_svensson_zero``/``_ns_zero`` bitwise.
+
+    numpy's exp can differ from the C library's ``math.exp`` by one ulp, and
+    the differential-evolution trajectory is chaotic in those perturbations
+    (the population-collapse metric diverges), so a one-ulp difference would
+    change fitted values. The exp calls are the per-element cost; all the
+    arithmetic around them stays vectorized.
+    """
+    return np.array([math.exp(float(v)) for v in x], dtype=np.float64)
+
+
+def _svensson_zeros(
+    t: npt.NDArray[np.float64], p: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
     b0, b1, b2, b3, tau1, tau2 = (float(v) for v in p)
     x1 = t / tau1
     x2 = t / tau2
-    loading1 = (1.0 - np.exp(-x1)) / x1
-    loading2 = (1.0 - np.exp(-x2)) / x2
-    return b0 + b1 * loading1 + b2 * (loading1 - np.exp(-x1)) + b3 * (loading2 - np.exp(-x2))
+    e1 = _exp(-x1)
+    e2 = _exp(-x2)
+    loading1 = (1.0 - e1) / x1
+    loading2 = (1.0 - e2) / x2
+    return b0 + b1 * loading1 + b2 * (loading1 - e1) + b3 * (loading2 - e2)
 
 
-def _ns_zeros(t: np.ndarray, p: np.ndarray) -> np.ndarray:
+def _ns_zeros(t: npt.NDArray[np.float64], p: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     b0, b1, b2, tau = (float(v) for v in p)
     x = t / tau
-    loading = (1.0 - np.exp(-x)) / x
-    return b0 + b1 * loading + b2 * (loading - np.exp(-x))
+    e = _exp(-x)
+    loading = (1.0 - e) / x
+    return b0 + b1 * loading + b2 * (loading - e)
 
 
 def _numerical_jacobian(
@@ -378,7 +397,11 @@ class Svensson:
 
     def rmse(self, times: Sequence[float], zeros: Sequence[float]) -> float:
         t, z, _ = _validate_fit_inputs(times, zeros, None, n_params=1, label="rmse")
-        return float(np.sqrt(np.mean((np.array([self.zero(float(x)) for x in t]) - z) ** 2)))
+        # Vectorized evaluation is algebraically identical to the scalar
+        # per-observation loop (verified: residuals vs the scalar form sit at
+        # floating-point noise); the parametric tests pin the fitted values.
+        model = _svensson_zeros(t, np.array([*self.beta, *self.tau], dtype=float))
+        return float(np.sqrt(np.mean((model - z) ** 2)))
 
     @classmethod
     def fit(
@@ -393,10 +416,13 @@ class Svensson:
         t, z, w = _validate_fit_inputs(times, zeros, weights, n_params=6, label="Svensson")
 
         def objective(p: np.ndarray) -> float:
-            b0, b1, b2, b3, tau1, tau2 = (float(v) for v in p)
+            b0, b1, _b2, _b3, tau1, tau2 = (float(v) for v in p)
             if b0 + b1 <= _CONSTRAINT_FLOOR or tau2 - tau1 <= _MIN_TAU:
                 return np.inf
-            model = np.array([_svensson_zero(float(x), b0, b1, b2, b3, tau1, tau2) for x in t])
+            # Vectorized evaluation replaces the per-observation comprehension;
+            # the results are unchanged (same formula, verified bitwise against
+            # the scalar form) and the parametric tests pin the fitted values.
+            model = _svensson_zeros(t, p)
             return float(np.sum(w * (model - z) ** 2))
 
         best, status, rank, cond, rmse, max_abs = _fit_and_report(
@@ -463,7 +489,11 @@ class NelsonSiegel:
 
     def rmse(self, times: Sequence[float], zeros: Sequence[float]) -> float:
         t, z, _ = _validate_fit_inputs(times, zeros, None, n_params=1, label="rmse")
-        return float(np.sqrt(np.mean((np.array([self.zero(float(x)) for x in t]) - z) ** 2)))
+        # Vectorized evaluation is algebraically identical to the scalar
+        # per-observation loop (verified: residuals vs the scalar form sit at
+        # floating-point noise); the parametric tests pin the fitted values.
+        model = _ns_zeros(t, np.array([*self.beta, self.tau], dtype=float))
+        return float(np.sqrt(np.mean((model - z) ** 2)))
 
     @classmethod
     def fit(
@@ -478,10 +508,13 @@ class NelsonSiegel:
         t, z, w = _validate_fit_inputs(times, zeros, weights, n_params=4, label="Nelson-Siegel")
 
         def objective(p: np.ndarray) -> float:
-            b0, b1, b2, tau = (float(v) for v in p)
+            b0, b1, _b2, _tau = (float(v) for v in p)
             if b0 + b1 <= _CONSTRAINT_FLOOR:
                 return np.inf
-            model = np.array([_ns_zero(float(x), b0, b1, b2, tau) for x in t])
+            # Vectorized evaluation replaces the per-observation comprehension;
+            # the results are unchanged (same formula, verified bitwise against
+            # the scalar form) and the parametric tests pin the fitted values.
+            model = _ns_zeros(t, p)
             return float(np.sum(w * (model - z) ** 2))
 
         best, status, rank, cond, rmse, max_abs = _fit_and_report(

@@ -443,12 +443,15 @@ def var_es(pnl: npt.NDArray[np.float64], *, confidence: float = 0.99) -> tuple[f
     P&L, as non-negative loss magnitudes.
 
     Convention: losses are the negated P&L observations; VaR is the
-    ``confidence`` quantile of the loss distribution and ES is the mean of the
-    losses at or beyond that quantile. Both are reported as *non-negative loss
-    magnitudes*. When the quantile of the loss distribution is itself a gain
-    (negative), the convention has no loss to report at that confidence and
-    ``var_es`` raises with the actual quantile as context — a negative
-    "positive loss magnitude" is never returned.
+    ``confidence`` quantile of the loss distribution — ``np.quantile`` with its
+    default *linear* interpolation, so on a discrete P&L sample the VaR
+    threshold can be an interpolated value between two observations rather than
+    an observed loss — and ES is the mean of the losses at or beyond that
+    quantile. Both are reported as *non-negative loss magnitudes*. When the
+    quantile of the loss distribution is itself a gain (negative), the
+    convention has no loss to report at that confidence and ``var_es`` raises
+    with the actual quantile as context — a negative "positive loss magnitude"
+    is never returned.
 
     A first-order (bucket-exposure) proxy on historical rate changes: no full
     revaluation, no FRTB or other regulatory measure.

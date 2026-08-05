@@ -285,11 +285,41 @@ def test_par_rate_does_not_drift_with_the_valuation_date(flat: CurveSet) -> None
         calendar=NullCalendar(),
         bdc=BusinessDayConvention.UNADJUSTED,
     )
+    # The mid-life asofs fall inside the first floating period, so the par rate
+    # needs that period's observed reset fixing — the library never substitutes
+    # a shortened forward. The fixing equals the flat curve's rate, so the
+    # mid-life par rate matches the spot-starting one.
+    fixing = Fixings(term={("6M", date(2026, 1, 2)): 0.04})
     rates = [
-        par_rate(swap, CurveSet.single(FlatCurve(reference_date=asof, rate=0.04)), asof=asof)
+        par_rate(
+            swap,
+            CurveSet.single(FlatCurve(reference_date=asof, rate=0.04)),
+            asof=asof,
+            fixings=fixing,
+        )
         for asof in (date(2026, 1, 2), date(2026, 4, 2), date(2026, 6, 30))
     ]
     assert max(rates) - min(rates) < 5e-4
+
+
+def test_par_rate_rejects_an_active_period_without_fixings(flat: CurveSet) -> None:
+    """A swap whose first period has already started cannot be valued at par
+    without the observed reset fixing: par_rate must raise MissingFixingError
+    rather than silently project a shortened forward over the stub."""
+    swap = VanillaSwap(
+        start=date(2026, 1, 2),
+        maturity=date(2031, 1, 2),
+        fixed_rate=0.04,
+        fixed_frequency=1,
+        fixed_day_count=DayCount.ACT_360,
+        float_tenor="6M",
+        float_day_count=DayCount.ACT_360,
+        calendar=NullCalendar(),
+        bdc=BusinessDayConvention.UNADJUSTED,
+    )
+    curves = CurveSet.single(FlatCurve(reference_date=date(2026, 1, 2), rate=0.04))
+    with pytest.raises(MissingFixingError, match="6M @ 2026-01-02"):
+        par_rate(swap, curves, asof=date(2026, 4, 2))
 
 
 def test_ois_uses_its_own_floating_day_count() -> None:

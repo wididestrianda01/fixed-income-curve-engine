@@ -57,6 +57,11 @@ _SIGMA_BOUNDS = (1e-5, 0.20)
 # the solution by more than this relative amount, the surface is not well
 # identified and the fit is rejected.
 _MAX_START_SENSITIVITY = 0.25
+
+# Jacobian condition limit: a full-rank but numerically ill-conditioned
+# Jacobian does not identify (a, sigma) reliably. Same threshold as the
+# parametric module's rejection, so both fit paths harden symmetrically.
+_MAX_JACOBIAN_CONDITION = 1e12
 _SENSITIVITY_STARTS = ((0.5, 1.0), (2.0, 1.0), (1.0, 0.5), (1.0, 2.0))
 
 # Optimizer tolerances: the initial fit is converged tightly, while the
@@ -471,6 +476,12 @@ def calibrate(
         raise CalibrationError(
             f"calibration Jacobian is rank-deficient: rank={jacobian_rank} from "
             f"{len(swaptions)} instruments; the quotes do not identify (a, sigma)"
+        )
+    if not math.isfinite(jacobian_condition) or jacobian_condition > _MAX_JACOBIAN_CONDITION:
+        raise CalibrationError(
+            f"calibration Jacobian is ill-conditioned: condition "
+            f"{jacobian_condition:.3g} from {len(swaptions)} instruments; "
+            "the quotes do not identify (a, sigma) reliably"
         )
 
     final_residuals = np.asarray(fit.fun, dtype=float)

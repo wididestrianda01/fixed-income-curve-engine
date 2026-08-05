@@ -25,6 +25,7 @@ from yieldcurve.curves.protocol import (
     CurveSet,
     DiscountCurve,
     Fixings,
+    MissingFixingError,
     curve_time,
 )
 from yieldcurve.instruments import (
@@ -205,11 +206,15 @@ def _term_floating_leg_pv(
         if payment_date <= asof:
             continue
         tau = year_fraction(previous, payment_date, day_count)
-        if fixings is not None and previous < asof:
+        if previous < asof:
+            # An active period that has already reset must look its rate up in
+            # the fixings; the library never replaces it with a shortened
+            # forward over the stub.
+            if fixings is None:
+                raise MissingFixingError(f"missing term fixing for {swap.float_tenor} @ {previous}")
             rate = fixings.term_rate(swap.float_tenor, previous)
         else:
-            accrual_start = max(previous, asof)
-            rate = _forward_rate(forecast, accrual_start, payment_date, day_count)
+            rate = _forward_rate(forecast, previous, payment_date, day_count)
         total += swap.notional * rate * tau * _df(curves, asof, payment_date)
     return total
 
@@ -307,16 +312,25 @@ def annuity(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
     return total
 
 
-def par_rate(swap: VanillaSwap | OIS, curves: CurveSet, asof: date) -> float:
-    """The fixed rate making ``swap`` worth zero."""
+def par_rate(
+    swap: VanillaSwap | OIS, curves: CurveSet, asof: date, *, fixings: Fixings = _EMPTY
+) -> float:
+    """The fixed rate making ``swap`` worth zero.
+
+    ``fixings`` supplies observed reset rates for floating periods that have
+    already started as of ``asof``; a mid-life valuation without them raises
+    ``MissingFixingError`` (the library never substitutes a shortened forward).
+    Spot- and forward-starting swaps have no active periods and need no
+    fixings.
+    """
     denominator = annuity(swap, curves, asof) * swap.notional
     if denominator == 0.0:
         raise ValueError("Swap has no remaining fixed payments; par rate is undefined")
     match swap:
         case VanillaSwap():
-            return _term_floating_leg_pv(swap, curves, asof) / denominator
+            return _term_floating_leg_pv(swap, curves, asof, fixings) / denominator
         case _:
-            return _ois_floating_leg_pv(swap, curves, asof, _EMPTY) / denominator
+            return _ois_floating_leg_pv(swap, curves, asof, fixings) / denominator
 
 
 # -- internal helpers ---------------------------------------------------------
