@@ -3,31 +3,42 @@
 #
 # ## Objective
 #
-# Notebook 01 built one curve from seven quotes and used one interpolation rule
-# without justifying it. That choice is not innocuous. Seven quotes constrain the
-# discount function at seven points; everywhere else the curve is whatever the
+# Notebook 01 built one curve from seven quotes using the canonical interpolation
+# rule, log-linear on discount factors, and verified that it reprices every quote
+# exactly. That choice is not innocuous. Seven quotes constrain the discount
+# function at seven points; everywhere else the curve is whatever the
 # interpolation rule says it is, and a ten year bond pays on dates that are almost
 # all in the "everywhere else" region.
 #
-# This notebook rebuilds the same SEK government curve under all three rules the
-# library implements, and measures where they disagree. The point is to show that
-# the disagreement is muted in the zero curve and several times larger in the forward
-# curve, which is why forward curves are the standard diagnostic for interpolation
-# quality.
+# This notebook builds the same SEK government curve under all three rules the
+# library implements. The canonical log-linear curve is built first, exactly as in
+# notebook 01; the cubic log-DF and Hagan-West monotone convex curves are then
+# built as *overlays* on the canonical curve's nodes — the same discount factors
+# at the same pillars, re-interpolated with the comparative rule. Nothing about
+# the input changes between the three curves below; only the rule for filling the
+# gaps changes.
+#
+# Because the overlays share the canonical nodes, they agree with the canonical
+# curve *at the pillars by construction*. The interesting quantities are therefore
+# the values between pillars, where the rules disagree, and the final quote
+# residuals, which the canonical build drives to zero and the overlays leave as
+# measured, typically nonzero, numbers.
 #
 # ## Data
 #
 # Identical to notebook 01: three Riksbank treasury bill quotes and four government
-# benchmark yields from the committed snapshot `data/snapshots/2026-07-24/`. Nothing
-# about the input changes between the three curves below. Only the rule for filling
-# the gaps changes.
+# benchmark yields from the committed snapshot `data/snapshots/2026-07-24/`.
+# Nothing about the input changes between the three curves below. Only the rule for
+# filling the gaps changes.
 #
 # ## Theory
 #
 # Every curve is a choice. Seven quotes constrain the discount function at seven
 # points; infinitely many functions pass through those points. The interpolation
-# rule selects one. The market data cannot tell them apart (each curve reprices the
-# seven instruments exactly), but they differ elsewhere.
+# rule selects one. The canonical log-linear curve reprices the seven instruments
+# exactly (that is its contract); the overlays' final residuals are measured below
+# and are small but nonzero. All three curves agree where the quotes are and
+# differ elsewhere.
 #
 # A key difference is **locality**: how far does changing one quote propagate? A
 # log-linear scheme is local. Moving one pillar changes only the immediately
@@ -47,40 +58,33 @@
 # Differentiation destroys one order of smoothness: if a scheme is merely
 # continuous then its forward may have jumps; if it is twice differentiable then
 # its forward is smooth. Log-linear interpolation is continuous but not
-# differentiable (it is piecewise linear on a compact support). Its derivative is
-# piecewise constant, jumping at every pillar. A cubic spline is twice
-# differentiable, so its forward is continuous. The monotone convex scheme of
-# Hagan and West is continuous and shaped to control overshoot, but deliberately
-# trades smoothness for control: its forward is continuous but has kinks
-# (discontinuous derivatives) at the knots. The zero rate, being an average of
-# instantaneous forwards rather than a derivative, smooths away these differences,
-# hiding them in aggregation. This is why the forward curve is the standard check
-# when assessing an interpolation method.
+# differentiable (it is piecewise linear in $\log P$). Its derivative is piecewise
+# constant, jumping at every pillar. A cubic spline is twice differentiable, so
+# its forward is continuous. The monotone convex scheme of Hagan and West is
+# continuous and shaped to control overshoot, but deliberately trades smoothness
+# for control: its forward is continuous but has kinks (discontinuous derivatives)
+# at the knots. The zero rate, being an average of instantaneous forwards rather
+# than a derivative, smooths away these differences, hiding them in aggregation.
+# This is why the forward curve is the standard check when assessing an
+# interpolation method.
 #
-# The **Hagan and West monotone convex scheme** constrains the forward rate to be
-# monotone and convex between pillars. Monotonicity prevents the forward curve from
-# oscillating, which would be economically incoherent; the market does not use a
-# model where the expected overnight rate bounces around within the curve.
-# Convexity prevents overshooting: the forward curve between two pillars neither
-# goes below the lower pillar's forward nor above the higher. This control comes at
-# a cost: the forward rate is only continuous, not differentiable, which is
-# reflected in discontinuous derivatives at the knots.
-#
-# ## Methodology
-#
-# ### The three rules
+# ## The three rules, and what each actually guarantees
 #
 # All three interpolate on $\log P(0,t)$ rather than on the discount factor or the
 # zero rate directly. Interpolating on $\log P$ is equivalent to interpolating on
 # $-t \, z(t)$, and it guarantees $P > 0$ everywhere, which interpolating on $P$
 # does not.
 #
-# | `InterpMethod` | Rule | Implied forward curve |
-# |---|---|---|
-# | `LOG_LINEAR_DF` | Linear in $\log P$ between pillars | Piecewise constant, with jumps at
-# pillars |
-# | `CUBIC_LOG_DF` | Natural cubic spline through $\log P$ | Smooth, but can overshoot |
-# | `MONOTONE_CONVEX` | Hagan and West (2006) | Continuous, designed to control overshoot |
+# - `LOG_LINEAR_DF` — linear in $\log P$ between pillars. Preserves positivity for
+#   any positive knots; preserves monotonicity (discount factors never rising with
+#   time) only when the knots are themselves monotone non-increasing; valid for
+#   negative zero rates; forward piecewise constant with jumps at pillars.
+# - `CUBIC_LOG_DF` — natural cubic spline through $\log P$. Smooth forwards, but
+#   a cubic spline can overshoot, so a discount factor can in principle rise with
+#   time even between monotone knots.
+# - `MONOTONE_CONVEX` — Hagan and West (2006). Controls forward shape
+#   (monotonicity amendments implemented in full) but omits Hagan-West's
+#   positivity amendment, so it can represent negative forwards.
 #
 # The reason a forward curve exposes the difference is that it is a derivative:
 #
@@ -106,8 +110,9 @@ from datetime import date
 import matplotlib.pyplot as plt
 import numpy as np
 
-from yieldcurve.curves.build import sek_government_curve
-from yieldcurve.curves.interpolation import InterpMethod
+from yieldcurve.curves.bootstrap import repricing_report
+from yieldcurve.curves.build import sek_government_curve, sek_government_quotes
+from yieldcurve.curves.interpolation import InterpMethod, overlay_curve
 from yieldcurve.curves.protocol import curve_time
 from yieldcurve.market.snapshot import Snapshot
 
@@ -120,39 +125,67 @@ maturities = [
     date.fromisoformat(str(d)) for d in list(bills["maturity_date"]) + list(bonds["maturity_date"])
 ]
 pillars = [curve_time(ASOF, m) for m in maturities]
+labels = list(bills["tenor"]) + list(bonds["tenor"])
 
+# The canonical log-linear curve, exactly as in notebook 01, and the two
+# comparative overlays re-interpolating its nodes.
+canonical = sek_government_curve(snapshot, ASOF)
 curves = {
-    method.name: sek_government_curve(snapshot, ASOF, method=method) for method in InterpMethod
+    InterpMethod.LOG_LINEAR_DF.name: canonical,
+    InterpMethod.CUBIC_LOG_DF.name: overlay_curve(canonical, InterpMethod.CUBIC_LOG_DF),
+    InterpMethod.MONOTONE_CONVEX.name: overlay_curve(canonical, InterpMethod.MONOTONE_CONVEX),
 }
+quotes = sek_government_quotes(snapshot, ASOF)
 
 print(f"{'tenor':>6} {'t':>8} " + "".join(f"{name:>18}" for name in curves))
-for label, t in zip(list(bills["tenor"]) + list(bonds["tenor"]), pillars, strict=True):
+for label, t in zip(labels, pillars, strict=True):
     row = "".join(f"{100 * c.zero(t):>18.6f}" for c in curves.values())
     print(f"{label:>6} {t:>8.4f} {row}")
 
+print()
+print("final quote residuals (model rate minus target rate), in basis points")
+print(f"{'tenor':>6} " + "".join(f"{name:>18}" for name in curves))
+reports = {name: repricing_report(c, quotes, ASOF) for name, c in curves.items()}
+for i, label in enumerate(labels):
+    cells = "".join(f"{1e4 * reports[name][i].residual:>18.4f}" for name in curves)
+    print(f"{label:>6} {cells}")
+print()
+for name, report in reports.items():
+    worst = max(abs(row.residual) for row in report)
+    print(f"{name:>16}: max |residual| = {1e4 * worst:.4f} bp")
+
 # %%
-# This table separates the instruments into two groups, and the split is more
-# informative than a uniform result would have been.
+# The pillar table is the first surprise, and it is worth stating plainly: the
+# three curves agree at every pillar to eight decimal places. This is not an
+# accident of the data; it is the construction. The overlays are built *on* the
+# canonical nodes — the same discount factors at the same maturities — so the
+# zero rates at those maturities are identical by construction. The three rules
+# only disagree in the gaps, where the market is silent.
 #
-# **The three bill pillars are identical to six decimal places.** A bill has one cash
-# flow, so its price depends on the discount factor at its own maturity and on
-# nothing else. No interpolated value enters the equation, the root find has the same
-# unique solution under every rule, and all three curves land on it.
+# The residual table separates the instruments into two groups, and the split is
+# more informative than a uniform result would have been.
 #
-# **The four bond pillars are not identical.** At two years the three rules give
-# 2.445905, 2.447171 and 2.447227 per cent, a spread of about 0.13 basis points. This
-# is not a repricing error. Each curve still reproduces its own input quote exactly:
-# the bootstrap solves for whatever endpoint discount factor makes the bond price
-# 100, and it succeeds in all three cases. But a two year annual coupon bond pays
-# once before maturity, on a date where no quote exists, and that intermediate
-# discount factor is interpolated. Change the interpolation rule and the interpolated
-# coupon discount factor changes, so the endpoint discount factor has to move in the
-# opposite direction to keep the total at par.
+# **The three bill quotes are recovered exactly by every rule.** A bill has one
+# cash flow, at a maturity that is a pillar, and its price depends on the discount
+# factor at that maturity and on nothing else. No interpolated value enters, and
+# all three curves land on the same closed-form discount factor.
 #
-# The consequence is worth stating plainly, because it is easy to assume otherwise:
-# a bootstrapped pillar value is not a pure market observable. It is a market
-# observable *net of* whatever the interpolation rule did to the earlier cash flows.
-# Only single payment instruments are free of that contamination.
+# **The four bond quotes are recovered exactly by the canonical build and within
+# about 0.17 basis points by the overlays.** The canonical log-linear build's
+# residuals are zero to the tolerance of the report (the builder enforces
+# $10^{-10}$ and fails loudly otherwise). The overlays' residuals are measured,
+# not asserted: they are small but nonzero, because a bond's intermediate coupons
+# fall between pillars. For example, the two year bond pays a coupon at the one
+# year anniversary — and one year is not a pillar, because the 12-month bill
+# series was discontinued in 2010. The coupon's discount factor is interpolated,
+# the rule differs between methods, and the model rate moves by a fraction of a
+# basis point.
+#
+# The consequence is worth stating plainly, because it is easy to assume
+# otherwise: *only the canonical log-linear method is claimed to reprice its input
+# quotes exactly.* A global overlay is a comparative illustration built on the
+# canonical nodes, and its final residuals are read from the table above, never
+# asserted away.
 
 # %%
 grid = np.linspace(1 / 365, 10.0, 2000)
@@ -182,12 +215,14 @@ for name, series in zeros.items():
     axes[0].plot(grid, 100 * series, label=name, color=colours[name], lw=1.4)
 axes[0].scatter(
     pillars,
-    [100 * curves[reference].zero(t) for t in pillars],
-    color="#d62728",
+    [100 * canonical.zero(t) for t in pillars],
+    color="black",
     zorder=3,
-    s=25,
+    s=22,
+    label="pillars",
 )
-axes[0].set_title("Zero rates")
+axes[0].set_title("Zero rates (continuous compounding)")
+axes[0].set_xlabel("maturity (years)")
 axes[0].set_ylabel("per cent")
 
 for name, series in fwds.items():
@@ -195,13 +230,13 @@ for name, series in fwds.items():
 for t in pillars:
     axes[1].axvline(t, color="#999999", lw=0.6, ls=":")
 axes[1].set_title("Instantaneous forwards (same three curves)")
-axes[1].set_ylabel("per cent")
+axes[1].set_xlabel("maturity (years)")
+axes[1].set_ylabel("per cent per year")
 
 for ax in axes:
-    ax.set_xlabel("maturity (years)")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
-fig.suptitle("SEK government curve, 24 July 2026, under three interpolation rules")
+fig.suptitle("SEK government curve, 24 July 2026, canonical build plus two overlays")
 fig.tight_layout()
 plt.show()
 
@@ -209,9 +244,9 @@ plt.show()
 # ## Results
 #
 # **The forward differences are about four times the zero differences.** Against
-# monotone convex, log-linear differs by at most 9.52 basis points in zero rate
-# terms and 38.18 basis points in forward terms. The cubic spline differs by 2.57
-# and 11.44 basis points respectively. The ratio is the point: the same
+# monotone convex, log-linear differs by at most 9.57 basis points in zero rate
+# terms and 38.23 basis points in forward terms. The cubic spline differs by 2.55
+# and 11.37 basis points respectively. The ratio is the point: the same
 # disagreement between two curves is roughly four times larger when measured on the
 # quantity that is a derivative of the fitted object.
 #
@@ -238,6 +273,12 @@ plt.show()
 # including maturities on the far side of other pillars. The overshoot this
 # produces is what monotone convex is designed to suppress.
 #
+# **The quote residuals are consistent with the gaps.** The canonical build
+# reprices every quote exactly. The overlays' measured residuals, up to about 0.17
+# basis points on the bonds, are the same gap structure expressed in repricing
+# terms: the residual is largest where a coupon falls in the sparse 6 month to 2
+# year region and at the longest bond, whose coupons span the whole grid.
+#
 # ## Interpretation
 #
 # The economic content is that a forward curve is a statement about what the
@@ -260,11 +301,11 @@ plt.show()
 # infinitely many curves pass through the seven points, and only the interpolation
 # rule selects one. Where data are dense the choice is inconsequential; where data
 # are sparse the choice drives the output. The extrapolation beyond 10 years is
-# unobserved and should not be relied upon. The forward curve is the diagnostic
-# for interpolation quality, but it is not directly observable; the zero rate is
-# aggregated and smooth. Disagreement in the forward curve translates to roughness
-# in value and risk measurements when products are priced off instantaneous forwards
-# or their derivatives.
+# unobserved — an unobservable input under IFRS 13 — and should not be relied
+# upon. The forward curve is the diagnostic for interpolation quality, but it is
+# not directly observable; the zero rate is aggregated and smooth. Disagreement in
+# the forward curve translates to roughness in value and risk measurements when
+# products are priced off instantaneous forwards or their derivatives.
 #
 # ## Regulatory context
 #
@@ -272,38 +313,47 @@ plt.show()
 # surprising if they did. What the supervisory framework asks for is that the choice
 # be documented and applied consistently.
 #
-# Under **BCBS d368** the requirement in the IRRBB standards is that a bank's
-# valuation methodology be documented and its assumptions be capable of independent
-# review. An interpolation rule is one of those assumptions.
+# Under **BCBS d368**, the IRRBB standard requires a bank's yield-curve
+# methodology to be documented, consistently applied and capable of independent
+# review. An interpolation rule is one of those assumptions. In the EU the same
+# management expectations are carried by CRD Article 84 and EBA/GL/2018/02; the
+# scenario side of the framework is DR (EU) 2024/856, which notebook 05 applies.
+# This notebook is an educational illustration of the documentation discipline,
+# not a submission to any supervisory process.
 #
-# Under **CRR Article 105** on prudent valuation, and the EBA regulatory technical
-# standards that implement it, a firm must hold an additional valuation adjustment
-# for market price uncertainty. Where two defensible interpolation rules give
-# materially different values for the same position, that dispersion is direct
-# evidence of the uncertainty the AVA is meant to capture. The measurement made
-# above, the maximum difference in basis points between rules, is the kind of number
-# that supports such an estimate.
+# Under **CRR Article 105** on prudent valuation, institutions must hold
+# additional valuation adjustments where the market prices of the positions they
+# hold are uncertain. Where two defensible interpolation rules give different
+# values for the same position, that dispersion is a measure of model uncertainty
+# — which is precisely the kind of uncertainty a prudent valuation framework
+# exists to govern. But the measurement above is a notebook exhibit: it is not an
+# AVA calculation, it makes no capital statement, and no capital treatment is
+# implied by anything in this repository.
 #
 # Under **IFRS 13**, an input that cannot be observed in the market is a Level 3
-# input regardless of how standard the technique using it is. The interpolation rule
-# is unobservable in exactly this sense.
+# input regardless of how standard the technique using it is. The interpolation
+# rule is unobservable in exactly this sense. No automatic classification of any
+# measurement follows from that: the hierarchy level of a fair-value measurement
+# depends on the significance of the lowest-level significant input (IFRS
+# 13.72-74), and this notebook performs no entity-level fair-value measurement.
 #
 # ## Summary
 #
-# The same seven quotes were bootstrapped under log-linear, cubic spline and
-# monotone convex interpolation. All three reprice their input instruments exactly.
-# The three bill pillars agree to six decimal places because a bill has a single cash
-# flow; the four bond pillars do not, because their intermediate coupon discount
-# factors are interpolated and the solved endpoint moves to compensate.
+# The same seven quotes were calibrated into a canonical log-linear curve, and the
+# two comparative overlays were built on its nodes. The three curves agree at the
+# pillars by construction; between pillars they differ by up to 9.57 basis points
+# in zero rate terms and 38.23 basis points in forward terms, and every one of
+# those maxima falls in the 6 month to 2 year gap where no quote exists.
 #
-# Between pillars the rules differ by up to 9.52 basis points in zero rate terms and
-# 38.18 basis points in forward terms, and every one of those maxima falls in the
-# 6 month to 2 year gap where no quote exists. Log-linear produces a piecewise
-# constant forward curve that jumps at every pillar.
+# The quote residuals tell the same story in repricing terms. The canonical build
+# reprices all seven quotes exactly (measured, enforced). The overlays leave
+# measured residuals of up to about 0.17 basis points on the bonds, concentrated
+# where a coupon payment falls between pillars; the bill quotes are recovered
+# exactly by all three rules because a bill has a single cash flow.
 #
 # Two conclusions follow. The forward curve is the diagnostic to inspect when
 # assessing an interpolation scheme, because the zero curve understates the
 # disagreement by roughly a factor of four. And the cost of the choice is
 # concentrated where the data is thin, which is the region a valuation control
-# function should be asked about first. The remaining notebooks use monotone convex
-# throughout.
+# function should be asked about first. The remaining notebooks use the canonical
+# log-linear curve throughout.
