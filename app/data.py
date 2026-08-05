@@ -56,30 +56,30 @@ _LAST_PILLAR_YEARS = 10.0
 _VOL_DATASET = "illustrative_swaption_vols"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def load_snapshot() -> Snapshot:
     """The committed offline snapshot. Failure here is fatal — the app has no fallback."""
     return Snapshot(date=SNAPSHOT_DATE)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def sek_quotes(asof: date) -> tuple[Quote, ...]:
     """The bill and benchmark quotes the SEK curve is bootstrapped from."""
     return sek_government_quotes(load_snapshot(), asof)
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def sek_curve(asof: date, method: InterpMethod) -> InterpolatedDiscountCurve:
     return sek_government_curve(load_snapshot(), asof, method=method)
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def sek_curveset(asof: date, method: InterpMethod) -> CurveSet:
     """Single-curve mode: SEK government discounting, no separate forecast curve."""
     return CurveSet.single(sek_curve(asof, method))
 
 
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def usd_curves(asof: date, method: InterpMethod) -> CurveSet:
     """Constructed USD curve set: OIS discounting from the constructed OIS
     par-rate grid plus a constructed 3M forecast basis. Both inputs are
@@ -105,7 +105,7 @@ class HullWhiteCalibration:
     maturities: tuple[date, ...]
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def hullwhite_calibration(asof: date, method: InterpMethod) -> HullWhiteCalibration:
     """The illustrative-grid Hull-White fit, cached per curve choice.
 
@@ -130,14 +130,15 @@ def hullwhite_calibration(asof: date, method: InterpMethod) -> HullWhiteCalibrat
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def cmt_history() -> pd.DataFrame:
     """Daily US Treasury CMT par yields (public source), long form: date,
     tenor_years, rate."""
-    return load_snapshot().load("fred_treasury_cmt_history")
+    # load_snapshot() is Any when streamlit stubs are absent; load() returns a DataFrame.
+    return load_snapshot().load("fred_treasury_cmt_history")  # type: ignore[no-any-return]
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def portfolio() -> Portfolio:
     return Portfolio.from_toml(_PORTFOLIO_PATH)
 
@@ -148,7 +149,7 @@ least the ten observations that yieldcurve.risk.portfolio requires for a stable 
 shortfall estimate."""
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def pnl_sample() -> tuple[npt.NDArray[np.float64], tuple[float, ...]]:
     """The most recent VAR_WINDOW daily changes of the CMT par-yield history,
     with their tenor grid.
@@ -161,7 +162,7 @@ def pnl_sample() -> tuple[npt.NDArray[np.float64], tuple[float, ...]]:
     return changes[-VAR_WINDOW:], tenors
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False)  # type: ignore[untyped-decorator]  # st.cache_* is Any-typed
 def gov_bonds() -> tuple[FixedCouponBond, ...]:
     """Riksgälden benchmarks that mature inside the bootstrapped curve.
 

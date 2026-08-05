@@ -180,7 +180,8 @@ def test_curve_tab_method_multiselect_drives_the_rendered_tables() -> None:
         for frame in at.dataframe:
             cols = list(frame.value.columns)
             if any("Target rate" in c for c in cols):
-                return frame.value
+                # frame.value is Any without streamlit stubs; the element is a DataFrame.
+                return frame.value  # type: ignore[no-any-return]
         raise AssertionError("residual table not rendered")
 
     at = AppTest.from_file(APP, default_timeout=TIMEOUT)
