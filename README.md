@@ -70,7 +70,7 @@ Discount factor at 1Y: 0.959903
 | The ECB's published Svensson parameters reconstruct the ECB's published spot curve within 0.5 bp at every published tenor; the library's own Svensson fit lands within 1.0 bp at every tenor with RMSE below 0.5 bp. | FRTB, capital, AVA, accounting classification (e.g. IFRS level hierarchy), or supervisory reporting. |
 | The six EU 2024/856 supervisory shocks of Article 1(1) — parallel up/down, short up/down, steepener, flattener — with the USD/SEK parameters (200/300/150 bp) and the Article 3(7) post-shock rate floor. | Trade capture, order execution, authentication, or access control. |
 | DV01 is a positive loss per 1 bp in SEK per 100 face (the loss-tail convention is pinned by tests). | Licensed market-data redistribution: no third-party feed is shipped; FRED's retrieval terms and the unverified Riksgalden/Bloomberg statuses are recorded in `DATA_SOURCES.md`. |
-| Package statement coverage is measured at 94.93% by the package-test command above (which enforces a 90% floor). | XVA or counterparty exposure. |
+| Package statement coverage is measured at 94.91% by the package-test command above (which enforces a 90% floor). | XVA or counterparty exposure. |
 | The wheel carries all 11 packaged datasets, `scenarios.toml`, and the model-limitations doc; the sdist's denylist scan reports zero local-state hits (asserted by `tests/test_build.py`). | Live or streaming market data: one frozen, fully offline snapshot; there is no refresh tooling and no network path in the package. |
 | A golden pipeline file pins end-to-end values as a regression check. | A validated production risk model. The checks in this README are software verification, not empirical or regulatory model validation. |
 
@@ -94,7 +94,7 @@ Everything below is a software verification check with an exact measured quantit
 
 | Check | Measured quantity | Where |
 |---|---|---|
-| Package tests, coverage-gated | `682 passed, 1 skipped`; statement coverage `94.93%` against a 90% floor | `uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90` |
+| Package tests, coverage-gated | `683 passed, 1 skipped`; statement coverage `94.91%` against a 90% floor | `uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90` |
 | App behavior and accessibility | `57 passed` | `uv run pytest -o addopts='' tests/app` |
 | QuantLib cross-checks | clean/dirty price within 1e-8 per 100 face; accrued within 1e-10; yield within 1e-8 absolute; modified duration matched directly (rel=1e-4); convexity through the price change under a 50 bp move (predicted price-change agreement to 1e-6 per 100 face) | `tests/test_quantlib_parity.py`, `tests/parity/test_quantlib_risk.py` |
 | Hull-White swaption NPV vs QuantLib Jamshidian engine | `test_normal_vol_matches_an_independent_quantlib_price` | `tests/models/test_hullwhite_swaptions.py` |
