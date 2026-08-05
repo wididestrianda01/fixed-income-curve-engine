@@ -480,7 +480,7 @@ print(f"  Hand:     10y-key loss per 1 bp = 5,000 x {k10:.6f} x {dirty_price:.6f
 print(f"           = {hand_k10_loss:,.2f} USD (loss magnitude)")
 print(f"  Library:  bucket_exposure(10y) per 1 bp = {bucket10_per_bp:,.2f} USD")
 print("           (signed change in book value; negative = loss; bucket_exposure")
-print("           is per 1.0 rate = per 100 bp, scaled by 1e-4 to per 1 bp)")
+print("           is per 1.0 (decimal) rate; 1 bp = 1e-4 of that)")
 print(f"  VaR 99% / ES 99%: {scaled_var:,.2f} / {scaled_es:,.2f} USD")
 print(f"  (1,000,000-face book: {var99:,.2f} / {es99:,.2f} USD — risk scales linearly")
 print("   with face, so half the face means half the risk)")
@@ -525,7 +525,8 @@ print("   with face, so half the face means half the risk)")
 # - **Zero KRDs at the 0.25y and 30y keys**, and essentially zero at 20y:
 #   the hat at 0.25y vanishes at the first coupon date (0.5y), and the hats
 #   at 20y/30y only move rates beyond the bond's 10-year maturity, which
-#   affects none of its cash flows.
+#   affects none of its cash flows. The 20y hat still catches a small
+#   weight through hat-grid interpolation at the 10y boundary.
 #
 # ### The EU 2024/856 scenario ranking
 #
@@ -557,7 +558,8 @@ print("   with face, so half the face means half the risk)")
 # the neutral PC1/PC2/PC3. The loading-shape diagnostics are printed so the
 # naming decision is transparent. Note the unit-norm convention: a 1.0 shift
 # "along the direction" is a 1.0 move of the *unit-norm loading*, which for
-# level is roughly a 30 bp parallel move, so the direction duration (years
+# level is roughly a 0.36 decimal (~3600 bp) parallel move, so the
+# direction duration (years
 # per 1.0 shift) is not the parallel duration. The economically meaningful
 # number is the one-sigma exposure, which multiplies the direction duration
 # by the component's empirical standard deviation and so keeps the scale of
