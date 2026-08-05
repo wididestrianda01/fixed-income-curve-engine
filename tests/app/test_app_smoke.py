@@ -6,11 +6,17 @@ unit labels render, and the known failure modes show their recovery text. Layout
 accessibility (true focus order, aria attributes, 390 px viewport rendering) are browser
 checks owned by Task 26; this suite pins the structural preconditions (labeled controls,
 fluid chart/table containers) instead.
+
+Runtime warning: this module takes roughly 13 minutes to run. Every AppTest run
+re-executes the whole app (all four tabs), each under the TIMEOUT=120 s per-run bound,
+and the interaction tests each run the app two or three times — the cost is dominated by
+full app executions, not by individual assertions. Budget accordingly in CI.
 """
 
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib.util
 from datetime import date
 from pathlib import Path
@@ -249,13 +255,16 @@ def test_risk_tab_discloses_the_interpolated_sek_one_year_point(app: AppTest) ->
 
 
 def test_risk_tab_renders_all_six_eu_2024_856_scenarios(app: AppTest) -> None:
-    """The six EU 2024/856 shocks run and are presented on screen: the ΔEVE
-    data table lists every scenario name with its illustrative ΔEVE in SEK.
+    """The six EU 2024/856 shocks run and are presented on screen, in the EBA
+    template order: the ΔEVE data table lists every scenario name with its
+    illustrative ΔEVE in SEK, in the order the regulation's Annex presents
+    them (parallel up/down, short up/down, steepener, flattener — the order
+    ``eu_scenarios`` returns and the app renders via ``list(ladder)``).
     (Task 8 renamed the old ``test_irrbb_board_runs_all_six_bcbs_scenarios``;
     the source-level ladder math stays in tests/risk.)"""
     from yieldcurve.risk.scenarios import eu_scenarios
 
-    names = {s.name for s in eu_scenarios("SEK")}
+    names = [s.name for s in eu_scenarios("SEK")]
     assert len(names) == 6
     table = next(
         d.value
@@ -264,7 +273,7 @@ def test_risk_tab_renders_all_six_eu_2024_856_scenarios(app: AppTest) -> None:
         and "Illustrative ΔEVE (SEK)" in list(d.value.columns)
     )
     assert len(table) == 6
-    assert set(table["Scenario"]) == names
+    assert list(table["Scenario"]) == names
 
 
 def test_risk_tab_reports_var_and_expected_shortfall(app: AppTest) -> None:
@@ -692,8 +701,9 @@ def test_beyond_tab_hull_white_table_carries_bp_units(app: AppTest) -> None:
 
 def test_risk_tab_renders_illustrative_delta_eve_units(app: AppTest) -> None:
     """APP-UX-010/REGULATION-23 smoke portions: the ΔEVE comparison is named
-    illustrative and every presented value carries SEK units — metric, chart
-    axis label, and data-table column (pinned rendered surface)."""
+    illustrative and every presented value carries SEK units — metric and
+    data-table column (pinned rendered surface). The chart axis title is a
+    figure contract pinned in tests/app/test_charts.py, not here."""
     rendered = _rendered(app)
     assert "illustrative ΔEVE" in rendered
     labels = _labels(app)
@@ -729,17 +739,19 @@ def test_scenario_config_error_degrades_to_a_sanitized_error(
 
 
 def test_all_interactive_controls_are_labeled_and_reachable() -> None:
-    """Keyboard-reachability structural proxy: every interactive control in
-    every tab renders a non-empty label and is enabled; the only disabled
-    control is the pinned 'As of' date. True DOM focus order, aria attributes,
-    and the 390 px viewport journey are Task 26 browser checks."""
+    """Keyboard-reachability structural proxy: every interactive control
+    rendered anywhere in the tree — sidebar, tabs, expanders, or the main
+    body outside any tab — has a non-empty label and is enabled; the only
+    disabled control is the pinned 'As of' date. The root-level ``at.get``
+    enumerates the whole rendered tree, so a control placed outside the
+    sidebar and the tabs (a per-container walk would miss it) still fails
+    this test. True DOM focus order, aria attributes, and the 390 px
+    viewport journey are Task 26 browser checks."""
     at = AppTest.from_file(APP, default_timeout=TIMEOUT)
     at.run()
     widgets: list[tuple[str, object]] = []
     for kind in ("selectbox", "radio", "slider", "checkbox", "multiselect", "date_input"):
-        widgets.extend((kind, element) for element in at.sidebar.get(kind))
-        for tab in at.tabs:
-            widgets.extend((kind, element) for element in tab.get(kind))
+        widgets.extend((kind, element) for element in at.get(kind))
     assert widgets, "no controls rendered — the app surface changed"
     for kind, widget in widgets:
         label = getattr(widget, "label", "")
@@ -754,15 +766,19 @@ def test_all_interactive_controls_are_labeled_and_reachable() -> None:
 def test_chart_and_table_containers_are_fluid_for_narrow_screens() -> None:
     """390 px first-screen overflow proxy (structural): every chart and data
     table renders in a fluid container (use_container_width=True or
-    width='stretch'), and no column layout pins a numeric width. The real
-    390x844 viewport journey — first-screen fit, keyboard access, horizontal
-    overflow — is owned by Task 26; this test guards the app-level
+    width='stretch', including module-level constants bound to those values),
+    and no st.columns/st.container call pins an explicit width — neither a
+    numeric ``width=`` keyword nor a numeric widths list passed positionally
+    to st.columns (``st.columns(3)`` is a column count, not a pinned width).
+    The real 390x844 viewport journey — first-screen fit, keyboard access,
+    horizontal overflow — is owned by Task 26; this test guards the app-level
     preconditions that journey depends on."""
     app_root = Path(__file__).resolve().parents[2]
     sources = [app_root / "app.py", *sorted((app_root / "app" / "tabs").glob("*.py"))]
     offenders: list[str] = []
     for path in sources:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        constants = _module_constants(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                 continue
@@ -770,32 +786,77 @@ def test_chart_and_table_containers_are_fluid_for_narrow_screens() -> None:
                 continue
             name = node.func.attr
             if name in ("plotly_chart", "dataframe"):
-                if not _uses_fluid_width(node):
+                if not _uses_fluid_width(node, constants):
                     offenders.append(f"{path.name}:{node.lineno} {name} not fluid")
-            elif name == "columns":
-                for kw in node.keywords:
-                    if (
-                        kw.arg == "width"
-                        and isinstance(kw.value, ast.Constant)
-                        and isinstance(kw.value.value, (int, float))
-                    ):
-                        offenders.append(f"{path.name}:{node.lineno} columns pinned width")
+            elif name in ("columns", "container") and _pinned_width(node, constants):
+                offenders.append(f"{path.name}:{node.lineno} {name} pinned width")
     assert not offenders, offenders
 
 
-def _uses_fluid_width(node: ast.Call) -> bool:
-    """True when the call passes use_container_width=True or width='stretch'."""
+def _module_constants(tree: ast.Module) -> dict[str, object]:
+    """Module-level name -> literal value, resolved by a static pass over one file.
+
+    Lets the proxy see through ``WIDTHS = [300, 200]; st.columns(WIDTHS)`` and
+    ``FLUID = True; st.plotly_chart(..., use_container_width=FLUID)`` without
+    executing anything. Assignments whose value is not a literal are skipped.
+    """
+    values: dict[str, object] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and node.value is not None:
+                with contextlib.suppress(ValueError, SyntaxError):
+                    values[target.id] = ast.literal_eval(node.value)
+    return values
+
+
+def _literal_value(node: ast.AST, constants: dict[str, object]) -> object:
+    """The literal ``node`` denotes: the node itself, a module-level name, or
+    a compound literal (list/tuple) built from constants."""
+    if isinstance(node, ast.Constant):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, SyntaxError):
+        return None
+
+
+def _pinned_width(node: ast.Call, constants: dict[str, object]) -> bool:
+    """True when an st.columns/st.container call pins an explicit width.
+
+    Catches a numeric ``width=`` keyword (literal or module-level constant)
+    and, for st.columns, a positional widths spec such as
+    ``st.columns([300, 200])`` (literal or module-level). A bare int spec
+    (``st.columns(3)``) is a column count and is not a pinned width.
+    """
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    for kw in node.keywords:
+        if kw.arg == "width" and isinstance(_literal_value(kw.value, constants), (int, float)):
+            return True
+    if node.func.attr == "columns" and node.args:
+        spec = _literal_value(node.args[0], constants)
+        if isinstance(spec, (list, tuple)) and all(isinstance(item, (int, float)) for item in spec):
+            return True
+    return False
+
+
+def _uses_fluid_width(node: ast.Call, constants: dict[str, object]) -> bool:
+    """True when the call passes use_container_width=True or width='stretch',
+    including via module-level constants bound to those values."""
     for kw in node.keywords:
         if kw.arg is None:
             continue
         if kw.arg == "use_container_width":
-            try:
-                if ast.literal_eval(kw.value) is True:
-                    return True
-            except (ValueError, SyntaxError):
-                pass
-        elif (
-            kw.arg == "width" and isinstance(kw.value, ast.Constant) and kw.value.value == "stretch"
-        ):
+            if _literal_value(kw.value, constants) is True:
+                return True
+        elif kw.arg == "width" and _literal_value(kw.value, constants) == "stretch":
             return True
     return False
