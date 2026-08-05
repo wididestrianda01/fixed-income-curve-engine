@@ -212,7 +212,10 @@ print(
 # self-discounted projection is bootstrapped here with the canonical default
 # method directly. Because both builds share the canonical interpolation rule,
 # any difference between them is attributable to the discounting choice and not
-# to the interpolation rule that notebook 02 measured.
+# to the interpolation rule that notebook 02 measured. The stress rebuilds in
+# `build_pair` bootstrap both conventions the same way — bare `bootstrap` calls
+# that fall back to the same canonical default — so the sensitivity table holds
+# the convention fixed as well.
 #
 # The notebook's `usd_swap` helper uses the same conventions as the builder,
 # including the maturity rule: integer-year tenors land on the calendar-month
@@ -231,6 +234,10 @@ def usd_swap(years: float, fixed_rate: float, notional: float = 1_000_000.0) -> 
     Integer-year tenors mature on the calendar-month anniversary, matching
     ``yieldcurve.curves.build._maturity``; the exact repricing printed below
     verifies the parity.
+
+    The month-grid maturity is assumed: all current basis tenors are
+    month-aligned, and a future off-month tenor would need ``_maturity``'s
+    ``round(years * 365)``-day fallback instead.
     """
     return VanillaSwap(
         start=ASOF,
@@ -409,9 +416,11 @@ plt.show()
 # the bootstrap does not move the par swap rate.
 #
 # The second is that the canonical builds reprice their own input quotes
-# exactly: the largest quote residual over the six pillars is below
+# exactly: the largest quote residual in the repricing report is below
 # $10^{-15}$, and the exactness is part of the builder's contract rather than a
-# coincidence. The maturity rule matters here: the notebook's `usd_swap` helper
+# coincidence. The repricing report and the par table above both cover the
+# six-pillar grid, so the two objects are the same six input quotes. The
+# maturity rule matters here: the notebook's `usd_swap` helper
 # uses the same calendar-month maturity rule as `yieldcurve.curves.build`, so
 # the repricing check is apples to apples. This is the canonical property
 # notebook 01 described: log-linear interpolation is *local*, so once the
