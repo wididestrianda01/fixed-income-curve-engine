@@ -101,7 +101,7 @@ Everything below is a software verification check with an exact measured quantit
 | ECB Svensson reconstruction | published parameters rebuild the published spot curve within 0.5 bp at every published tenor; independent fit within 1.0 bp, RMSE < 0.5 bp | `tests/curves/test_parametric.py` |
 | Log-linear quote repricing | every quote within the 1e-6 bp tolerance; overlay residuals measured per quote (pinned nonzero: each > 1e-8 in decimal rate) | `tests/curves/test_bootstrap.py` |
 | EU 2024/856 scenarios | six Article 1(1) shocks, USD/SEK 200/300/150 bp, Article 3(7) floor applied | `tests/risk/test_bcbs_scenarios.py` |
-| Wheel/sdist contents | wheel: 44 members incl. all 11 datasets, `scenarios.toml`, limitations doc; sdist: 123 members, zero denylist hits | `tests/test_build.py`, `tests/test_distribution.py` |
+| Wheel/sdist contents | wheel: 44 members incl. all 11 datasets, `scenarios.toml`, limitations doc; sdist: 128 members, zero denylist hits | `tests/test_build.py`, `tests/test_distribution.py` |
 | Golden pipeline regression | pinned end-to-end values (`pipeline_v1.json`) | `tests/golden/test_pipeline_golden.py` |
 
 QuantLib is a development-only extra: nothing in `src/` imports it, and the parity tests treat it as a cross-check, not as proof that the models are validated for use.
