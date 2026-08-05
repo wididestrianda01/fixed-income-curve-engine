@@ -264,9 +264,13 @@ print(f"continuous zero rate    {100 * curve.zero(curve_time(ASOF, maturity)):.4
 # Three views of the same object are plotted below. They contain identical
 # information and are not independent checks of each other, but each makes a
 # different property visible. Under log-linear DF interpolation the zero rate is
-# piecewise constant and the instantaneous forward rate is piecewise constant with
-# a jump at every pillar: that step structure is the canonical method's signature,
-# visible in the flat segments of the left and right panels.
+# continuous with a kink at every pillar: inside a pillar interval $\log P$ is
+# linear in $t$, so $z(t) = -\log P(t) / t$ traces a smooth monotone arc, and the
+# arc changes slope where it joins the next interval at a pillar. The
+# instantaneous forward rate, by contrast, is piecewise constant — a sawtooth
+# that jumps at every pillar — and only the extrapolation beyond the covered
+# horizon is flat in the zero rate. That structure is the canonical method's
+# signature: smooth curved segments in the left panel, steps in the right panel.
 
 # %%
 grid = np.linspace(1 / 365, 10.0, 400)
@@ -322,8 +326,11 @@ print(f"covered horizon (largest quote-backed curve time)      : {curve.covered_
 # of about 103 basis points (printed above). The red markers are the seven pillar
 # maturities, the points where an actual quote constrains the curve. Between them
 # the curve is an interpolation, and beyond ten years it would be an extrapolation.
-# Under log-linear DF interpolation the zero rate is piecewise constant: the curve
-# steps from pillar to pillar, which is exactly what the left panel shows.
+# Under log-linear DF interpolation the zero rate is continuous with a kink at
+# every pillar: within each interval it moves smoothly along a $z(t) = C/t -
+# \lambda$ arc, then joins the next interval with a visible change of slope —
+# the smooth curved segments the left panel shows. Beyond the covered horizon
+# the zero rate is flat, by the extrapolation rule.
 #
 # **The discount factor curve is monotonically decreasing and starts at one.**
 # Both properties are verified for this data at the pillars above. Log-linear DF

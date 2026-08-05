@@ -145,22 +145,30 @@ for label, t in zip(labels, pillars, strict=True):
 print()
 print("final quote residuals (model rate minus target rate), in basis points")
 print(f"{'tenor':>6} " + "".join(f"{name:>18}" for name in curves))
-reports = {name: repricing_report(c, quotes, ASOF) for name, c in curves.items()}
-for i, label in enumerate(labels):
-    cells = "".join(f"{1e4 * reports[name][i].residual:>18.4f}" for name in curves)
+reports = {
+    name: {row.instrument.maturity: row for row in repricing_report(c, quotes, ASOF)}
+    for name, c in curves.items()
+}
+# Each row is keyed by the instrument maturity read from the quote objects (and
+# the label map below), never by positional index, so a reordering of the quotes
+# can not silently misalign a label with another instrument's residual.
+labels_by_maturity = dict(zip(maturities, labels, strict=True))
+for maturity, label in labels_by_maturity.items():
+    cells = "".join(f"{1e4 * reports[name][maturity].residual:>18.4f}" for name in curves)
     print(f"{label:>6} {cells}")
 print()
 for name, report in reports.items():
-    worst = max(abs(row.residual) for row in report)
+    worst = max(abs(row.residual) for row in report.values())
     print(f"{name:>16}: max |residual| = {1e4 * worst:.4f} bp")
 
 # %%
 # The pillar table is the first surprise, and it is worth stating plainly: the
-# three curves agree at every pillar to eight decimal places. This is not an
-# accident of the data; it is the construction. The overlays are built *on* the
-# canonical nodes — the same discount factors at the same maturities — so the
-# zero rates at those maturities are identical by construction. The three rules
-# only disagree in the gaps, where the market is silent.
+# three curves agree at every pillar to six decimal places, as the table above
+# prints. This is not an accident of the data; it is the construction. The
+# overlays are built *on* the canonical nodes — the same discount factors at the
+# same maturities — so the zero rates at those maturities are identical by
+# construction. The three rules only disagree in the gaps, where the market is
+# silent.
 #
 # The residual table separates the instruments into two groups, and the split is
 # more informative than a uniform result would have been.

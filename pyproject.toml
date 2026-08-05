@@ -39,6 +39,7 @@ dev = [
 notebooks = [
     "jupyter>=1.1",
     "matplotlib>=3.9",
+    "jupytext>=1.16",
 ]
 app = [
     "streamlit>=1.38",
