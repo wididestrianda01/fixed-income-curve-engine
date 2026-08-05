@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import date
 
 from yieldcurve.curves.interpolation import InterpMethod
-from yieldcurve.market.snapshot import Snapshot
 
 __all__ = ["AppState"]
 
@@ -15,10 +14,12 @@ __all__ = ["AppState"]
 class AppState:
     """What every tab is allowed to know about the user's choices.
 
-    There is no currency selector: the snapshot has SEK government data and USD swap data,
-    and which one a tab uses is a property of the question that tab asks, not of a control.
+    The snapshot is deliberately not part of the state: every tab reaches it through the
+    cached ``app.data.load_snapshot`` bridge, and the sidebar validates it before any tab
+    renders. There is no currency selector: the snapshot has SEK government data and USD
+    swap data, and which one a tab uses is a property of the question that tab asks, not
+    of a control.
     """
 
-    snapshot: Snapshot
     asof: date
     method: InterpMethod

@@ -7,6 +7,7 @@ twice pays for it once.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -22,20 +23,22 @@ from yieldcurve.curves.build import (
     sek_government_curve,
     sek_government_quotes,
     usd_curveset,
-    usd_ois_quotes,
 )
 from yieldcurve.curves.interpolation import InterpMethod, InterpolatedDiscountCurve
 from yieldcurve.curves.protocol import CurveSet
 from yieldcurve.instruments import FixedCouponBond
 from yieldcurve.market.snapshot import Snapshot
+from yieldcurve.models.hullwhite import atm_swaption_grid, calibrate
 from yieldcurve.risk.pca import daily_changes
 from yieldcurve.risk.portfolio import Portfolio
 
 __all__ = [
     "SNAPSHOT_DATE",
     "VAR_WINDOW",
+    "HullWhiteCalibration",
     "cmt_history",
     "gov_bonds",
+    "hullwhite_calibration",
     "load_snapshot",
     "pnl_sample",
     "portfolio",
@@ -43,7 +46,6 @@ __all__ = [
     "sek_curveset",
     "sek_quotes",
     "usd_curves",
-    "usd_ois_quote_table",
 ]
 
 SNAPSHOT_DATE = date(2026, 7, 24)
@@ -51,6 +53,7 @@ SNAPSHOT_DATE = date(2026, 7, 24)
 
 _PORTFOLIO_PATH = Path(__file__).resolve().parents[1] / "data" / "demo_portfolio.toml"
 _LAST_PILLAR_YEARS = 10.0
+_VOL_DATASET = "illustrative_swaption_vols"
 
 
 @st.cache_data(show_spinner=False)
@@ -84,11 +87,47 @@ def usd_curves(asof: date, method: InterpMethod) -> CurveSet:
     return usd_curveset(load_snapshot(), asof, method=method)
 
 
+@dataclass(frozen=True)
+class HullWhiteCalibration:
+    """The calibrated two-parameter Hull-White fit on the illustrative vol grid.
+
+    Carries the presentation-ready fields the Beyond tab shows: the fitted parameters,
+    the residual, the per-swaption market/model vols, and the expiry and maturity grid
+    they were calibrated on.
+    """
+
+    a: float
+    sigma: float
+    rmse_vol_bp: float
+    market_vols: tuple[float, ...]
+    model_vols: tuple[float, ...]
+    expiries: tuple[date, ...]
+    maturities: tuple[date, ...]
+
+
 @st.cache_data(show_spinner=False)
-def usd_ois_quote_table(asof: date) -> tuple[Quote, ...]:
-    """Constructed OIS par rates (Treasury CMT plus a dated indicative spread),
-    not observed live quotes."""
-    return usd_ois_quotes(load_snapshot(), asof)
+def hullwhite_calibration(asof: date, method: InterpMethod) -> HullWhiteCalibration:
+    """The illustrative-grid Hull-White fit, cached per curve choice.
+
+    Calibration is the app's single expensive pure computation (about two seconds).
+    Streamlit renders every tab on every rerun, so an interaction in any other tab would
+    repeat it without this cache. The grid is illustrative, not market data — the Beyond
+    tab discloses this on screen.
+    """
+    curves = usd_curves(asof, method)
+    swaptions, vols = atm_swaption_grid(
+        load_snapshot(), asof, curves.discount, dataset=_VOL_DATASET
+    )
+    result = calibrate(curves.discount, swaptions, vols, asof)
+    return HullWhiteCalibration(
+        a=result.a,
+        sigma=result.sigma,
+        rmse_vol_bp=result.rmse_vol_bp,
+        market_vols=tuple(result.market_vols),
+        model_vols=tuple(result.model_vols),
+        expiries=tuple(s.expiry for s in swaptions),
+        maturities=tuple(s.swap.maturity for s in swaptions),
+    )
 
 
 @st.cache_data(show_spinner=False)

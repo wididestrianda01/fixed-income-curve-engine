@@ -1,20 +1,19 @@
 """A Swedish government curve, and what it can and cannot tell you.
 
-Entry point. Builds the sidebar, then routes to four tabs. Each tab is rendered inside a
-handler that turns a known library exception into an st.error rather than a traceback: a
-reader who chooses an interpolation method that cannot fit the data should be told that,
-not shown a stack.
+Entry point. Builds the sidebar, then routes to four tabs. Initialization is guarded: if
+the packaged snapshot is missing or unreadable, the app stops with a sanitized recovery
+message before any tab renders. Each tab is rendered inside a handler that turns a known
+library exception into an st.error rather than a traceback — technical detail goes to the
+server log, and the browser only ever sees a message with no paths and no stack traces.
 """
 
 from __future__ import annotations
 
-import sys
+import logging
+import re
 from collections.abc import Callable
-from pathlib import Path
 
 import streamlit as st
-
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from app.data import SNAPSHOT_DATE, load_snapshot
 from app.state import AppState
@@ -22,6 +21,7 @@ from app.tabs import beyond, curve, pricing, risk
 from yieldcurve.curves.build import CurveDataError
 from yieldcurve.curves.interpolation import InterpMethod
 from yieldcurve.curves.parametric import FitError
+from yieldcurve.curves.protocol import MissingFixingError
 from yieldcurve.market.snapshot import MissingDatasetError
 from yieldcurve.models.hullwhite import CalibrationError
 from yieldcurve.risk.portfolio import PortfolioError
@@ -29,6 +29,7 @@ from yieldcurve.risk.scenarios import ScenarioConfigError
 
 RENDER_ERRORS = (
     CurveDataError,
+    MissingFixingError,
     MissingDatasetError,
     ScenarioConfigError,
     CalibrationError,
@@ -36,11 +37,25 @@ RENDER_ERRORS = (
     PortfolioError,
 )
 
+_LOGGER = logging.getLogger("app")
+
+# Local filesystem locations must never reach the browser (SEC-06). Some domain error
+# messages embed paths (PortfolioError carries the TOML path; an external-root
+# MissingDatasetError carries the target path), so anything displayed is run through this
+# sanitizer: absolute POSIX paths, Windows drive paths, and ~-home prefixes become
+# "[path]". The full message still reaches the server log.
+_PATH_TOKEN = re.compile(r"(?:[A-Za-z]:[\\/]|~?/)[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)+")
+
 _METHOD_LABELS = {
     InterpMethod.MONOTONE_CONVEX: "Monotone convex (default)",
     InterpMethod.CUBIC_LOG_DF: "Cubic on log discount factors",
     InterpMethod.LOG_LINEAR_DF: "Log-linear on discount factors",
 }
+
+
+def _sanitize(text: str) -> str:
+    """Remove path-like tokens so no local filesystem location reaches the browser."""
+    return _PATH_TOKEN.sub("[path]", text)
 
 
 def build_sidebar() -> AppState:
@@ -61,15 +76,21 @@ def build_sidebar() -> AppState:
         "Monotone convex keeps forwards positive but is not linear in the inputs, so "
         "risk ladders built under it do not add up exactly. The two smooth methods do."
     )
-    return AppState(snapshot=load_snapshot(), asof=SNAPSHOT_DATE, method=method)
+    load_snapshot()  # fail fast: validate the packaged snapshot before any tab renders
+    return AppState(asof=SNAPSHOT_DATE, method=method)
 
 
 def render_guarded(render: Callable[[AppState], None], state: AppState) -> None:
-    """Render one tab, converting a known data or model failure into a message."""
+    """Render one tab; turn a known domain failure into a sanitized message.
+
+    The full exception (type, message, traceback) is logged server-side with technical
+    detail; the browser sees only the type name and a path-free message.
+    """
     try:
         render(state)
     except RENDER_ERRORS as exc:
-        st.error(f"{type(exc).__name__}: {exc}")
+        _LOGGER.exception("Known app error while rendering %s: %s", type(exc).__name__, exc)
+        st.error(f"{type(exc).__name__}: {_sanitize(str(exc))}")
 
 
 def main() -> None:
@@ -79,7 +100,19 @@ def main() -> None:
         layout="wide",
     )
     st.title("A Swedish government curve, and what it can and cannot tell you")
-    state = build_sidebar()
+    try:
+        state = build_sidebar()
+    except MissingDatasetError:
+        _LOGGER.exception("App initialization failed: the packaged snapshot is unusable")
+        st.error(
+            f"The packaged market-data snapshot ({SNAPSHOT_DATE.isoformat()}) is missing "
+            "or unreadable, so the app cannot start. This app runs entirely on one "
+            "committed, read-only snapshot that ships with the package. Reinstall the "
+            "package — for example `uv sync --frozen --extra app` — or restore the "
+            "packaged snapshot resources, then restart the app. Technical details were "
+            "logged server-side."
+        )
+        return
     tab_curve, tab_pricing, tab_risk, tab_beyond = st.tabs(
         ["The curve", "Pricing", "Risk", "Beyond the curve"]
     )
@@ -93,4 +126,5 @@ def main() -> None:
         render_guarded(beyond.render, state)
 
 
-main()
+if __name__ == "__main__":
+    main()

@@ -174,6 +174,131 @@ def test_hull_white_residual_is_strictly_positive_on_the_illustrative_grid() -> 
 
 
 def test_beyond_tab_says_the_volatilities_are_illustrative(app: AppTest) -> None:
-    rendered = " ".join(m.value for m in app.markdown)
+    rendered = (
+        " ".join(m.value for m in app.markdown)
+        + " ".join(w.value for w in app.warning)
+        + " ".join(c.value for c in app.caption)
+    )
     assert "illustrative" in rendered.lower()
     assert "Information License Agreement" in rendered
+    # MKT-04: the disclosure must not claim a market/cme.py module still exists.
+    assert "cme.py" not in rendered
+
+
+def test_the_app_guards_missing_snapshot_before_tabs_render(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing or corrupt packaged snapshot stops the app with a sanitized
+    recovery message before any tab renders: no paths, no traceback, no tabs."""
+    import app.data as app_data
+    import app.tabs.beyond as beyond_mod  # bind tab imports against the real data layer
+    from yieldcurve.market.snapshot import MissingDatasetError
+
+    def _missing() -> None:
+        raise MissingDatasetError("packaged snapshot manifest: is missing; reinstall the package")
+
+    # beyond.py binds app.data.load_snapshot at import time; importing it before the
+    # patch keeps that binding honest for every later test in this process.
+    assert beyond_mod.load_snapshot is app_data.load_snapshot  # type: ignore[attr-defined]
+    monkeypatch.setattr(app_data, "load_snapshot", _missing)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    assert len(at.exception) == 0
+    rendered = " ".join(e.value for e in at.error)
+    assert "packaged snapshot" in rendered.lower()
+    assert ASOF.isoformat() in rendered  # names the expected packaged snapshot
+    assert "reinstall" in rendered.lower()  # a concrete recovery action
+    assert "Traceback" not in rendered
+    assert "/home" not in rendered  # no local filesystem path in the browser
+    assert not at.tabs  # nothing is rendered behind the guard
+
+
+def test_known_domain_errors_are_sanitized_and_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Known domain failures show type + sanitized message on screen; the full
+    technical detail (including any path) goes to the server-side log only."""
+    import logging
+
+    import app.tabs.beyond as beyond_mod
+    from yieldcurve.risk.portfolio import PortfolioError
+
+    def _boom(*args: object, **kwargs: object) -> object:
+        raise PortfolioError(
+            "/home/alice/.cache/yieldcurve/data/demo_portfolio.toml: invalid TOML: "
+            "expected '=' after a key (at line 3)"
+        )
+
+    # Patch the tab's own binding (an uncached call site) so the failure genuinely
+    # surfaces inside a tab render rather than being masked by the data-layer cache.
+    monkeypatch.setattr(beyond_mod, "fit_pca", _boom)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    with caplog.at_level(logging.ERROR, logger="app"):
+        at.run()
+    assert len(at.exception) == 0
+    rendered = " ".join(e.value for e in at.error)
+    assert "PortfolioError" in rendered
+    assert "Traceback" not in rendered
+    assert "/home/alice" not in rendered
+    assert "demo_portfolio.toml" not in rendered
+    assert "/home/alice/.cache/yieldcurve/data/demo_portfolio.toml" in caplog.text
+
+
+def test_hull_white_calibration_second_request_is_a_cache_hit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The expensive calibration is a cached pure output: asking twice must not
+    recompute, even outside an app rerun."""
+    from typing import Any
+
+    import app.data as app_data
+    from yieldcurve.curves.interpolation import InterpMethod
+
+    real: Any = app_data.calibrate  # type: ignore[attr-defined]  # internal global, patched below
+    calls = {"n": 0}
+
+    def counting(*args: object, **kwargs: object) -> object:
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(app_data, "calibrate", counting)
+    app_data.hullwhite_calibration(ASOF, InterpMethod.MONOTONE_CONVEX)
+    before = calls["n"]
+    app_data.hullwhite_calibration(ASOF, InterpMethod.MONOTONE_CONVEX)
+    assert calls["n"] == before
+    assert before <= 1
+
+
+def test_expensive_calibration_is_cached_and_the_method_control_is_global(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hidden-tab work: a rerun without changes reuses the cached calibration,
+    and the sidebar interpolation control reaches the Risk tab (global scope)."""
+    from typing import Any
+
+    import app.data as app_data
+    from yieldcurve.curves.interpolation import InterpMethod
+
+    real: Any = app_data.calibrate  # type: ignore[attr-defined]  # internal global, patched below
+    calls = {"n": 0}
+
+    def counting(*args: object, **kwargs: object) -> object:
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(app_data, "calibrate", counting)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    captions = " ".join(c.value for c in at.caption)
+    assert "Under monotone convex the ladder is additive only to about 1.4%" in captions
+
+    at.sidebar.selectbox[0].select(InterpMethod.CUBIC_LOG_DF)
+    at.run()
+    assert calls["n"] == 1  # a cold curve key calibrates exactly once
+    captions = " ".join(c.value for c in at.caption)
+    assert "Under this smooth scheme the ladder is additive to about 1e-4" in captions
+    assert len(at.exception) == 0
+
+    at.run()  # unchanged choice: the rerun must reuse the cached calibration
+    assert calls["n"] == 1
+    assert len(at.exception) == 0

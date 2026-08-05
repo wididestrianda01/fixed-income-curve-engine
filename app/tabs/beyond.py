@@ -12,15 +12,14 @@ import pandas as pd
 import streamlit as st
 
 from app.charts import bar_figure, overlay_figure
-from app.data import cmt_history, load_snapshot, usd_curves
+from app.data import cmt_history, hullwhite_calibration, load_snapshot, usd_curves
 from app.state import AppState
 from yieldcurve.curves.build import government_swap_basis
-from yieldcurve.models.hullwhite import HullWhite, atm_swaption_grid, calibrate
+from yieldcurve.models.hullwhite import HullWhite
 from yieldcurve.risk.pca import daily_changes, fit_pca
 
 _BASIS_TENORS = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0)
 _GRID = np.linspace(0.05, 10.0, 300)
-_VOL_DATASET = "illustrative_swaption_vols"
 _BP = 10_000.0
 _N_COMPONENTS = 3
 _COMPONENT_NAMES = ("Level", "Slope", "Curvature")
@@ -111,33 +110,30 @@ def _section_c(state: AppState) -> None:
         "that stays arbitrage-free against the curve it was built on."
     )
     st.warning(
-        "**The volatilities below are illustrative, not market data.** Real CME cleared-"
-        "swaption settlement volatilities require a CME Information License Agreement and "
-        "may not be redistributed here — which is why `market/cme.py` raises rather than "
-        "caches. This grid is constructed from a closed form stated in the CSV header and "
-        "in `DATA_SOURCES.md`. What follows therefore demonstrates how well a two-parameter "
-        "model spans a surface. It is not a fit to traded prices."
+        "**The volatilities below are illustrative, not market data.** Real cleared-"
+        "swaption settlement volatility surfaces are licensed — a CME Information License "
+        "Agreement covers CME Group's settlement vols — and are not redistributed here. "
+        "This grid is constructed from a closed form stated in the CSV header and in "
+        "`DATA_SOURCES.md`. What follows therefore demonstrates how well a two-parameter "
+        "model spans a surface; it is not a fit to traded prices."
     )
 
     curves = usd_curves(state.asof, state.method)
-    swaptions, vols = atm_swaption_grid(
-        load_snapshot(), state.asof, curves.discount, dataset=_VOL_DATASET
-    )
-    result = calibrate(curves.discount, swaptions, vols, state.asof)
+    fit = hullwhite_calibration(state.asof, state.method)
 
     a, b, c = st.columns(3)
-    a.metric("Calibrated a", f"{result.a:.5f}")
-    b.metric("Calibrated sigma", f"{result.sigma:.5f}")
-    c.metric("Residual (bp)", f"{result.rmse_vol_bp:.2f}")
+    a.metric("Calibrated a", f"{fit.a:.5f}")
+    b.metric("Calibrated sigma", f"{fit.sigma:.5f}")
+    c.metric("Residual (bp)", f"{fit.rmse_vol_bp:.2f}")
 
     table = pd.DataFrame(
         {
-            "Expiry": [s.expiry for s in swaptions],
-            "Swap maturity": [s.swap.maturity for s in swaptions],
-            "Illustrative vol (bp)": [v * _BP for v in result.market_vols],
-            "Model vol (bp)": [v * _BP for v in result.model_vols],
+            "Expiry": list(fit.expiries),
+            "Swap maturity": list(fit.maturities),
+            "Illustrative vol (bp)": [v * _BP for v in fit.market_vols],
+            "Model vol (bp)": [v * _BP for v in fit.model_vols],
             "Difference (bp)": [
-                (m - k) * _BP for m, k in zip(result.model_vols, result.market_vols, strict=True)
+                (m - k) * _BP for m, k in zip(fit.model_vols, fit.market_vols, strict=True)
             ],
         }
     )
@@ -150,8 +146,8 @@ def _section_c(state: AppState) -> None:
     )
 
     st.markdown("**What the two parameters do** — sliders below drive the illustration only.")
-    slider_a = st.slider("Mean reversion a", 0.001, 0.50, float(result.a), 0.001)
-    slider_sigma = st.slider("Volatility sigma", 0.0001, 0.05, float(result.sigma), 0.0001)
+    slider_a = st.slider("Mean reversion a", 0.001, 0.50, float(fit.a), 0.001)
+    slider_sigma = st.slider("Volatility sigma", 0.0001, 0.05, float(fit.sigma), 0.0001)
     model = HullWhite(curve=curves.discount, a=slider_a, sigma=slider_sigma)
     times = [0.0, *np.linspace(0.25, 10.0, 40).tolist()]
     paths = model.simulate(times, n_paths=25, seed=20260803)
