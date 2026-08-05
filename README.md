@@ -10,7 +10,7 @@ Requires Python 3.12 and [`uv`](https://docs.astral.sh/uv/). One command install
 uv sync --frozen --extra dev --extra app
 ```
 
-Nothing in this command (or any later step) touches the network at runtime: all market data ships inside the package as a read-only snapshot.
+After installation, nothing in the library or app touches the network: all market data ships inside the package as a read-only snapshot.
 
 Run the package tests (the coverage-gated command):
 
@@ -66,7 +66,7 @@ Discount factor at 1Y: 0.959903
 | Verified here (measured) | Not implemented |
 |---|---|
 | Log-linear DF calibration reprices every input quote within the documented 1e-6 bp tolerance; the final per-quote residuals are measured and reported for every method (`repricing_report`). | Institution-wide IRRBB or net-interest-income measures. The app's ΔEVE chart is an illustrative, single-currency comparison on a stylised book. |
-| Selected calculations cross-checked against QuantLib: bond clean, dirty, accrued and yield; modified duration and convexity via the price change; and one Hull-White swaption NPV via QuantLib's Jamshidian engine. | Behavioural deposit or prepayment models (no non-maturity accounts, no NII). |
+| Selected calculations cross-checked against QuantLib: bond clean, dirty, accrued and yield; modified duration matched directly, convexity via the price change; and one Hull-White swaption NPV via QuantLib's Jamshidian engine. | Behavioural deposit or prepayment models (no non-maturity accounts, no NII). |
 | The ECB's published Svensson parameters reconstruct the ECB's published spot curve within 0.5 bp at every published tenor; the library's own Svensson fit lands within 1.0 bp at every tenor with RMSE below 0.5 bp. | FRTB, capital, AVA, accounting classification (e.g. IFRS level hierarchy), or supervisory reporting. |
 | The six EU 2024/856 supervisory shocks of Article 1(1) — parallel up/down, short up/down, steepener, flattener — with the USD/SEK parameters (200/300/150 bp) and the Article 3(7) post-shock rate floor. | Trade capture, order execution, authentication, or access control. |
 | DV01 is a positive loss per 1 bp in SEK per 100 face (the loss-tail convention is pinned by tests). | Licensed market-data redistribution: no third-party feed is shipped; FRED's retrieval terms and the unverified Riksgalden/Bloomberg statuses are recorded in `DATA_SOURCES.md`. |
@@ -96,10 +96,10 @@ Everything below is a software verification check with an exact measured quantit
 |---|---|---|
 | Package tests, coverage-gated | `682 passed, 1 skipped`; statement coverage `94.93%` against a 90% floor | `uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90` |
 | App behavior and accessibility | `57 passed` | `uv run pytest -o addopts='' tests/app` |
-| QuantLib cross-checks | clean/dirty price within 1e-8 per 100 face; accrued within 1e-10; yield within 1e-8 absolute; duration and convexity through the price change | `tests/test_quantlib_parity.py`, `tests/parity/test_quantlib_risk.py` |
+| QuantLib cross-checks | clean/dirty price within 1e-8 per 100 face; accrued within 1e-10; yield within 1e-8 absolute; modified duration matched directly (rel=1e-4); convexity through the price change under a 50 bp move (predicted price-change agreement to 1e-6 per 100 face) | `tests/test_quantlib_parity.py`, `tests/parity/test_quantlib_risk.py` |
 | Hull-White swaption NPV vs QuantLib Jamshidian engine | `test_normal_vol_matches_an_independent_quantlib_price` | `tests/models/test_hullwhite_swaptions.py` |
 | ECB Svensson reconstruction | published parameters rebuild the published spot curve within 0.5 bp at every published tenor; independent fit within 1.0 bp, RMSE < 0.5 bp | `tests/curves/test_parametric.py` |
-| Log-linear quote repricing | every quote within the 1e-6 bp tolerance; overlay residuals measured per quote (off-knot residuals of order 1e-5 in decimal rate) | `tests/curves/test_bootstrap.py` |
+| Log-linear quote repricing | every quote within the 1e-6 bp tolerance; overlay residuals measured per quote (pinned nonzero: each > 1e-8 in decimal rate) | `tests/curves/test_bootstrap.py` |
 | EU 2024/856 scenarios | six Article 1(1) shocks, USD/SEK 200/300/150 bp, Article 3(7) floor applied | `tests/risk/test_bcbs_scenarios.py` |
 | Wheel/sdist contents | wheel: 44 members incl. all 11 datasets, `scenarios.toml`, limitations doc; sdist: 123 members, zero denylist hits | `tests/test_build.py`, `tests/test_distribution.py` |
 | Golden pipeline regression | pinned end-to-end values (`pipeline_v1.json`) | `tests/golden/test_pipeline_golden.py` |
