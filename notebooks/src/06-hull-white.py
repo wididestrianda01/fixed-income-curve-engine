@@ -210,7 +210,12 @@ from scipy.stats import norm
 
 from yieldcurve.curves.build import usd_ois_curve
 from yieldcurve.market.snapshot import Snapshot
-from yieldcurve.models.hullwhite import HullWhite, atm_swaption_grid, calibrate
+from yieldcurve.models.hullwhite import (
+    _MAX_START_SENSITIVITY,
+    HullWhite,
+    atm_swaption_grid,
+    calibrate,
+)
 
 ASOF = date(2026, 7, 24)
 
@@ -324,9 +329,9 @@ for t in stat_horizons:
     analytic_sd = hw_ref.conditional_sd(0.0, t) * 100
     print(
         f"{t:>10.1f} | {sample_mean:>14.4f} | {analytic_mean:>16.4f} "
-        f"| {abs(sample_mean - analytic_mean):>9.4f} "
+        f"| {sample_mean - analytic_mean:>+9.4f} "
         f"| {sample_sd:>11.4f} | {analytic_sd:>13.4f} "
-        f"| {abs(sample_sd - analytic_sd):>9.4f}"
+        f"| {sample_sd - analytic_sd:>+9.4f}"
     )
 print("-" * 70)
 print()
@@ -479,7 +484,7 @@ print(f"  Active bounds (a, sigma):       {result.active_bounds}")
 print(f"  Jacobian rank:                  {result.jacobian_rank} of 2 parameters")
 print(f"  Jacobian condition number:      {result.jacobian_condition:.3f}")
 print(f"  Residual scale (decimal vol):   {result.residual_scale:.3e}")
-print(f"  Start sensitivity (limit 0.25): {result.start_sensitivity:.3e}")
+print(f"  Start sensitivity (limit {_MAX_START_SENSITIVITY:.2f}): {result.start_sensitivity:.3e}")
 print()
 print(f"Implied half-life ln(2)/a:        {np.log(2.0) / result.a:.2f} years")
 print()
@@ -581,9 +586,11 @@ print()
 #
 # The calibrated model is a one-factor Gaussian specification with two free
 # parameters. Against the 28-instrument illustrative grid it achieves the
-# RMSE printed above, with the misses concentrated at the short expiries —
-# the residual pattern of a two-parameter model spanning a surface it cannot
-# represent. The diagnostics (optimizer success, active bounds, Jacobian
+# RMSE printed above, with the largest residuals at the corner cells of the
+# expiry-maturity grid (short-expiry/long-tenor and long-expiry/short-tenor
+# combinations) — the residual pattern of a two-parameter model spanning a
+# surface it cannot represent. The diagnostics (optimizer success, active
+# bounds, Jacobian
 # rank/condition, residual scale, start sensitivity) are reported because a
 # least-squares result without them is not an identified fit.
 #
