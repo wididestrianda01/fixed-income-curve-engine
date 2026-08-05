@@ -17,8 +17,10 @@ quantified measure of its magnitude.
 The short rate is Gaussian under the risk-neutral measure. Its distribution at
 any horizon is normal with a closed-form mean and standard deviation (the
 conditional Hull-White mean and the standard deviation
-`σ·sqrt((1 − exp(−2a·(t−s))) / 2a)`). Negative rates are not prevented; they
-have a computable probability.
+`σ·sqrt((1 − exp(−2a·(t−s))) / 2a)`). Here `s` is the conditioning time (the
+date the distribution is conditioned on; `t` is the horizon — `s = 0` recovers
+the F₀-conditional standard deviation of theory.md §11). Negative rates are
+not prevented; they have a computable probability.
 
 For the illustrative parameters `a = 0.05`, `σ = 0.010` on a flat 3% curve:
 

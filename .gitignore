@@ -1,5 +1,8 @@
 # --- Local planning artifacts: never publish ---
-.context/
+# The four .context/*.md notes (spec/theory/regulation/references) are tracked
+# remediation deliverables; any other file under .context/ stays ignored.
+.context/*
+!.context/*.md
 .claude/
 docs/superpowers/
 PLAN.md
