@@ -114,7 +114,10 @@ def packaged_csv_bytes(asof: date) -> bytes:
     buffer = io.StringIO()
     for line in preamble(asof):
         buffer.write(line + "\n")
-    writer = csv.writer(buffer)
+    # Repo rule (.gitattributes *.csv eol=lf): the packaged CSV must be LF-only.
+    # csv.writer's dialect default lineterminator is CRLF, which would make the
+    # committed bytes differ from every eol=lf-normalized checkout.
+    writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(["expiry", "maturity", "vol"])
     for _, row in frame.iterrows():
         writer.writerow([row["expiry"], row["maturity"], f"{row['vol']:.4f}"])

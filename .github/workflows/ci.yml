@@ -22,8 +22,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       # HYGIENE-02/SEC-03: every CI job installs from the lockfile with
       # --frozen; dev, app, and notebook runtimes all come from extras.
       - name: Install locked dependencies
@@ -34,6 +38,8 @@ jobs:
         run: uv run ruff format --check .
       - name: Mypy (strict, per pyproject)
         run: uv run mypy
+      - name: Pre-commit config validation
+        run: uv run pre-commit validate-config
 
   package-test:
     name: Package tests (coverage-gated)
@@ -47,8 +53,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       - name: Install locked dependencies
         run: uv sync --frozen --extra dev --extra app --extra notebooks
       # The coverage-gated command runs the full suite minus app and notebook
@@ -90,8 +100,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       - name: Install locked dependencies
         run: uv sync --frozen --extra dev --extra app --extra notebooks
       # TQ-07: app integration/presentation checks run with neutral pytest
@@ -111,8 +125,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       - name: Install locked dependencies
         run: uv sync --frozen --extra dev --extra app --extra notebooks
       # TQ-09: notebook-hygiene assertions run outside the coverage-gated
@@ -132,8 +150,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       - name: Install locked dependencies
         run: uv sync --frozen --extra dev --extra app --extra notebooks
       # TQ-07/step 7: notebook execution is a separate job with neutral pytest
@@ -154,8 +176,12 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
           python-version: "3.12"
-      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA)
+      # astral-sh/setup-uv v9.0.0 (pinned full commit SHA); uv-version pinned to
+      # the installed uv (0.11.24) that maintains uv.lock, so CI and the
+      # lockfile maintainer cannot drift.
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          uv-version: "0.11.24"
       - name: Install locked dependencies
         run: uv sync --frozen --extra dev --extra app --extra notebooks
       # Step 6: the Task 13 packaging gate builds first; the artifact tests
@@ -163,4 +189,6 @@ jobs:
       - name: Build wheel and sdist
         run: uv build --out-dir dist-review
       - name: Wheel quickstart and artifact-manifest checks
-        run: uv run pytest tests/test_build.py tests/test_distribution.py
+        # Neutral pytest options, decoupled from coverage (TQ-07), matching the
+        # app-smoke and notebook jobs.
+        run: uv run pytest -o addopts='' tests/test_build.py tests/test_distribution.py

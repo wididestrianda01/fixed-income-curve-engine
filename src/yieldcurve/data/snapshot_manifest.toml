@@ -151,4 +151,4 @@ transformation = "sigma_bp(e, m) = (60.0 + 22.0 * e * exp(1 - e / 1.5)) * exp(-0
 columns = ["expiry", "maturity", "vol"]
 units = { expiry = "ISO 8601 option expiry date", maturity = "ISO 8601 swap maturity date", vol = "normal volatility in basis points" }
 limitations = "Illustrative only: not market data, not observed live quotes and not a fit to any traded price"
-sha256 = "be7c999ae5b0d7bf7a2eb7a1f1c1deb463a38758ca435b70ab0e0f68da8eaf1c"
+sha256 = "c35be87f9cf12272afea68ed7b87a385f7bcc87e3be03a4dd24a183c7f282cfe"
