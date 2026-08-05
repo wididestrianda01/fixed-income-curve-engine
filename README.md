@@ -34,9 +34,9 @@ from yieldcurve.curves.build import usd_curveset
 from yieldcurve.instruments import Bill
 from yieldcurve.curves.pricing import price
 
-snapshot = Snapshot(date(2026, 7, 24))       # the committed, read-only snapshot
+snapshot = Snapshot(date(2026, 7, 24))  # the committed, read-only snapshot
 asof = date(2026, 7, 24)
-curves = usd_curveset(snapshot, asof)        # OIS discount curve + 3M forecast curve
+curves = usd_curveset(snapshot, asof)  # OIS discount curve + 3M forecast curve
 bill = Bill(maturity=date(2027, 7, 24))
 result = price(bill, curves, asof=asof)
 
