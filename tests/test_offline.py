@@ -47,6 +47,21 @@ def test_load_snapshot_without_network() -> None:
     assert snapshot.available()  # type: ignore[arg-type]
 
 
+def test_app_data_layer_loads_without_network() -> None:
+    """The app's data bridges consume the packaged snapshot only — nothing in
+    the app path opens a socket. The app claims it 'never fetches data'; the
+    smoke suite exercises this layer through AppTest, so the offline
+    guarantee must cover it here too."""
+    from app.data import SNAPSHOT_DATE, gov_bonds, load_snapshot, sek_curve
+    from yieldcurve.curves.interpolation import InterpMethod
+
+    snapshot = load_snapshot()
+    assert snapshot.available()  # type: ignore[arg-type]
+    curve = sek_curve(SNAPSHOT_DATE, InterpMethod.MONOTONE_CONVEX)
+    assert curve.zero(10.0) > 0.0
+    assert len(gov_bonds()) > 0
+
+
 def test_default_snapshot_loads_every_dataset_without_network() -> None:
     """Every packaged dataset is readable through the default snapshot offline."""
     snapshot = Snapshot(date=ASOF)

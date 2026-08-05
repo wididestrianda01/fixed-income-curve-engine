@@ -1,18 +1,22 @@
-"""Headless smoke tests for the Streamlit app.
+"""Headless behavioral tests for the Streamlit app.
 
-These assert that each tab runs without raising and that the numbers it puts on screen are
-the same numbers the library produces. They are not visual tests; nothing here checks
-layout. The anchor values come from tests/golden/pipeline_v1.json once task 7.8 writes it —
-until then each tab's anchor is recomputed from the library in the test itself.
+These assert the rendered surface: each tab runs without raising, the numbers on screen
+are the same numbers the library produces, controls change the rendered values, tables and
+unit labels render, and the known failure modes show their recovery text. Layout and DOM
+accessibility (true focus order, aria attributes, 390 px viewport rendering) are browser
+checks owned by Task 26; this suite pins the structural preconditions (labeled controls,
+fluid chart/table containers) instead.
 """
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 from datetime import date
 from pathlib import Path
 from typing import cast
 
+import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
@@ -32,6 +36,19 @@ def _labels(at: AppTest) -> set[str]:
     return {m.label for m in at.metric}
 
 
+def _widget(at: AppTest, kind: str, label: str) -> object:
+    """The first widget of ``kind`` labelled ``label``, anywhere in the tree.
+
+    AppTest exposes widget parameters (label, disabled, help, options) from the
+    protobuf; the main tree also contains the sidebar widgets, so lookups by
+    label are unambiguous regardless of where the control lives.
+    """
+    for element in getattr(at, kind):
+        if getattr(element, "label", None) == label:
+            return element
+    raise AssertionError(f"no {kind} widget labelled {label!r} rendered")
+
+
 def _app_sanitize(text: str) -> str:
     """Run app.py's path sanitizer. ``import app`` resolves to the app/ package,
     so the entry-point script is loaded under a distinct module name instead."""
@@ -47,9 +64,132 @@ def test_the_app_starts_without_raising(app: AppTest) -> None:
     assert len(app.exception) == 0
 
 
+def test_every_top_level_tab_renders_without_exception(app: AppTest) -> None:
+    """Streamlit executes every tab body on every run, so a clean run proves
+    each top-level section renders. Pin the four tabs and their section
+    headings explicitly so a dropped or renamed tab fails this test."""
+    assert [t.label for t in app.tabs] == [
+        "The curve",
+        "Pricing",
+        "Risk",
+        "Beyond the curve",
+    ]
+    assert all(len(t.subheader) >= 1 for t in app.tabs)
+    assert len(app.exception) == 0
+
+
 def test_the_sidebar_offers_the_three_interpolation_methods(app: AppTest) -> None:
     assert len(app.sidebar.selectbox) == 1
     assert len(app.sidebar.selectbox[0].options) == 3
+
+
+def test_the_date_control_is_pinned_to_the_committed_snapshot(app: AppTest) -> None:
+    """The only date selector is the 'As of' control, and it is deliberately
+    non-interactive: one committed, read-only snapshot and no fetching. The
+    control displays the snapshot date, is disabled, and carries the
+    never-fetches help text a reader sees as the control's tooltip."""
+    date_input = app.sidebar.date_input[0]
+    assert date_input.label == "As of"
+    assert date_input.value == ASOF
+    assert date_input.disabled is True
+    assert "never fetches data" in date_input.help
+
+
+def test_bond_selector_changes_the_rendered_price_metrics() -> None:
+    """Selecting a different bond on the Pricing tab reprices the rendered
+    metrics, and the Risk tab follows the selection (session state)."""
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    bond = _widget(at, "selectbox", "Bond")
+    before = {m.label: m.value for m in at.metric}
+    bond.select_index(3)  # type: ignore[attr-defined]
+    at.run()
+    after = {m.label: m.value for m in at.metric}
+    assert after["Dirty price (per 100 face)"] != before["Dirty price (per 100 face)"]
+    assert after["Clean price (per 100 face)"] != before["Clean price (per 100 face)"]
+    captions = " ".join(c.value for c in at.caption)
+    assert "SGB 0.125% May-2031" in captions  # Risk tab names the selected bond
+    assert len(at.exception) == 0
+
+
+def test_confidence_radio_changes_the_rendered_var_es_values() -> None:
+    """The Risk tab's confidence radio repaints the linearized-delta VaR/ES
+    metrics at the chosen confidence with a different rendered value."""
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    var99 = {m.label: m.value for m in at.metric}["Linearized delta VaR (99%)"]
+    radio = _widget(at, "radio", "Confidence")
+    radio.set_value(0.95)  # type: ignore[attr-defined]
+    at.run()
+    by_label = {m.label: m.value for m in at.metric}
+    assert "Linearized delta VaR (95%)" in by_label
+    assert "Linearized delta ES (95%)" in by_label
+    assert by_label["Linearized delta VaR (95%)"] != var99
+    assert len(at.exception) == 0
+
+
+def test_sidebar_interpolation_control_changes_rendered_values_across_tabs() -> None:
+    """The global interpolation control reaches every tab: switching the
+    sidebar method reprices the Pricing metrics and recalibrates the Beyond
+    Hull-White parameters — both rendered values change."""
+    from yieldcurve.curves.interpolation import InterpMethod
+
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    by_label = {m.label: m.value for m in at.metric}
+    dirty = by_label["Dirty price (per 100 face)"]
+    calibrated_a = by_label["Calibrated a (1/yr)"]
+    at.sidebar.selectbox[0].select(InterpMethod.CUBIC_LOG_DF)
+    at.run()
+    by_label = {m.label: m.value for m in at.metric}
+    assert by_label["Dirty price (per 100 face)"] != dirty
+    assert by_label["Calibrated a (1/yr)"] != calibrated_a
+    assert len(at.exception) == 0
+
+
+def test_svensson_checkbox_toggles_the_fit_section() -> None:
+    """The Curve tab's 'Show Svensson fit' checkbox adds and removes the
+    rendered fit metric — the control drives the rendered surface."""
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    checkbox = _widget(at, "checkbox", "Show Svensson fit")
+    checkbox.uncheck()  # type: ignore[attr-defined]
+    at.run()
+    assert "Svensson RMSE (bp)" not in _labels(at)
+    # Re-fetch: element references are bound to the tree that produced them,
+    # so a value set on a stale reference would not reach the next run.
+    _widget(at, "checkbox", "Show Svensson fit").check()  # type: ignore[attr-defined]
+    at.run()
+    assert "Svensson RMSE (bp)" in _labels(at)
+    assert len(at.exception) == 0
+
+
+def test_curve_tab_method_multiselect_drives_the_rendered_tables() -> None:
+    """Deselecting overlay methods narrows the rendered residual table to the
+    remaining method's columns — the calibration-method control changes the
+    rendered tables, not just the charts."""
+    from yieldcurve.curves.interpolation import InterpMethod
+
+    def residual_table() -> pd.DataFrame:
+        for frame in at.dataframe:
+            cols = list(frame.value.columns)
+            if any("Target rate" in c for c in cols):
+                return frame.value
+        raise AssertionError("residual table not rendered")
+
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    full = residual_table()
+    assert len([c for c in full.columns if c.startswith("Residual (bp)")]) == 3
+    multiselect = _widget(at, "multiselect", "Interpolation methods to overlay")
+    multiselect.set_value([InterpMethod.LOG_LINEAR_DF])  # type: ignore[attr-defined]
+    at.run()
+    single = residual_table()
+    residual_cols = [c for c in single.columns if c.startswith("Residual (bp)")]
+    assert len(residual_cols) == 1
+    assert "Log-linear DF (canonical calibration)" in residual_cols[0]
+    assert not any("Monotone convex" in c for c in single.columns)
+    assert len(at.exception) == 0
 
 
 def test_curve_tab_reports_the_svensson_residual(app: AppTest) -> None:
@@ -108,27 +248,40 @@ def test_risk_tab_discloses_the_interpolated_sek_one_year_point(app: AppTest) ->
     assert "interpolated, not observed" in body
 
 
-def test_eu_2024_856_scenarios_run_all_six_shocks() -> None:
-    from app.data import portfolio, sek_curveset
-    from yieldcurve.curves.interpolation import InterpMethod
-    from yieldcurve.risk.portfolio import eve_ladder
+def test_risk_tab_renders_all_six_eu_2024_856_scenarios(app: AppTest) -> None:
+    """The six EU 2024/856 shocks run and are presented on screen: the ΔEVE
+    data table lists every scenario name with its illustrative ΔEVE in SEK.
+    (Task 8 renamed the old ``test_irrbb_board_runs_all_six_bcbs_scenarios``;
+    the source-level ladder math stays in tests/risk.)"""
     from yieldcurve.risk.scenarios import eu_scenarios
 
-    scenarios = eu_scenarios("SEK")
-    ladder = eve_ladder(
-        portfolio(),
-        sek_curveset(ASOF, InterpMethod.MONOTONE_CONVEX),
-        ASOF,
-        scenarios,
+    names = {s.name for s in eu_scenarios("SEK")}
+    assert len(names) == 6
+    table = next(
+        d.value
+        for d in app.dataframe
+        if "Scenario" in list(d.value.columns)
+        and "Illustrative ΔEVE (SEK)" in list(d.value.columns)
     )
-    assert len(ladder) == 6
-    assert tuple(ladder) == tuple(s.name for s in scenarios)
+    assert len(table) == 6
+    assert set(table["Scenario"]) == names
 
 
 def test_risk_tab_reports_var_and_expected_shortfall(app: AppTest) -> None:
     labels = _labels(app)
     assert any(label.startswith("Linearized delta VaR") for label in labels)
     assert any(label.startswith("Linearized delta ES") for label in labels)
+
+
+def test_risk_tab_renders_the_loss_tail_direction_convention(app: AppTest) -> None:
+    """TQ-06 app portion: the on-screen copy states the tail convention —
+    losses are positive magnitudes and expected shortfall never falls below
+    VaR — so a reader cannot misread the sign of the reported numbers. The
+    source-level math (ES >= VaR on the actual sample) stays in tests/risk."""
+    captions = " ".join(c.value for c in app.caption)
+    assert "positive loss" in captions  # DV01 caption: loss magnitudes, not signs
+    assert "Expected shortfall is the mean of the tail beyond VaR" in captions
+    assert "never be the smaller of the two" in captions  # ES >= VaR, rendered
 
 
 def test_expected_shortfall_never_falls_below_var_at_either_confidence() -> None:
@@ -390,18 +543,21 @@ def test_expensive_calibration_is_cached_and_the_method_control_is_global(
     captions = " ".join(c.value for c in at.caption)
     assert "Under monotone convex the ladder is additive only to about 1.4%" in captions
 
-    at.sidebar.selectbox[0].select(InterpMethod.CUBIC_LOG_DF)
+    at.sidebar.selectbox[0].select(InterpMethod.LOG_LINEAR_DF)
     at.run()
-    # CUBIC is a fresh cache key, so switching methods recalibrates exactly once on
-    # top of whatever the MONOTONE run did — regardless of process-wide cache warmth.
-    n_cubic = calls["n"]
-    assert n_cubic == n_monotone + 1
+    # LOG_LINEAR must be a cold cache key here: the "switching recalibrates
+    # exactly once" contract is only observable for a key no earlier test
+    # warmed. (CUBIC is warmed by the interaction tests above; MONOTONE is the
+    # suite default.) LOG_LINEAR is a smooth method, so the same additivity
+    # caption applies.
+    n_linear = calls["n"]
+    assert n_linear == n_monotone + 1
     captions = " ".join(c.value for c in at.caption)
     assert "Under this smooth scheme the ladder is additive to about 1e-4" in captions
     assert len(at.exception) == 0
 
     at.run()  # unchanged choice: the rerun must reuse the cached calibration
-    assert calls["n"] == n_cubic
+    assert calls["n"] == n_linear
     assert len(at.exception) == 0
 
 
@@ -431,6 +587,22 @@ def test_curve_tab_shows_quote_repricing_residuals(app: AppTest) -> None:
     columns = [list(d.value.columns) for d in app.dataframe]
     assert any(any("Residual (bp" in c for c in col) for col in columns), columns
     assert any(any("Target rate" in c for c in col) for col in columns), columns
+
+
+def test_curve_tab_grid_expander_table_carries_unit_columns(app: AppTest) -> None:
+    """The zero/forward grid expander is the chart's text alternative and its
+    columns carry units (percent for zeros, 3M forward rate percent)."""
+    grid = next(
+        (
+            list(d.value.columns)
+            for d in app.dataframe
+            if list(d.value.columns) and next(iter(d.value.columns)) == "Maturity (y)"
+        ),
+        None,
+    )
+    assert grid is not None, "the grid expander table did not render"
+    assert any(c.startswith("Zero (%)") for c in grid)
+    assert any(c.startswith("3M fwd (%)") for c in grid)
 
 
 def test_curve_tab_states_the_svensson_fit_target(app: AppTest) -> None:
@@ -498,3 +670,132 @@ def test_beyond_tab_metrics_carry_units(app: AppTest) -> None:
     assert any("1/yr" in label for label in labels)
     assert any("1/√yr" in label for label in labels)
     assert any(label.startswith("Residual (bp") for label in labels)
+
+
+def test_risk_tab_ladder_expander_tables_carry_units(app: AppTest) -> None:
+    """The ladder expander is the chart text alternative and its columns carry
+    the Task 7 units: KRD in price-bp per yield-bp, par ladder per 100 face
+    per 1 bp."""
+    columns = [list(d.value.columns) for d in app.dataframe]
+    assert any("KRD (price-bp per yield-bp)" in cols for cols in columns), columns
+    assert any("Par-rate delta (per 100 face per 1 bp)" in cols for cols in columns), columns
+
+
+def test_beyond_tab_hull_white_table_carries_bp_units(app: AppTest) -> None:
+    """The calibrated vol table (expiry x swap maturity grid) carries bp units
+    on every vol column and names the model difference explicitly."""
+    columns = [list(d.value.columns) for d in app.dataframe]
+    target = next((cols for cols in columns if "Illustrative vol (bp)" in cols), None)
+    assert target is not None, columns
+    assert {"Expiry", "Swap maturity", "Model vol (bp)", "Difference (bp)"} <= set(target)
+
+
+def test_risk_tab_renders_illustrative_delta_eve_units(app: AppTest) -> None:
+    """APP-UX-010/REGULATION-23 smoke portions: the ΔEVE comparison is named
+    illustrative and every presented value carries SEK units — metric, chart
+    axis label, and data-table column (pinned rendered surface)."""
+    rendered = _rendered(app)
+    assert "illustrative ΔEVE" in rendered
+    labels = _labels(app)
+    assert any(label.startswith("Worst-case illustrative ΔEVE (SEK)") for label in labels)
+    columns = [list(d.value.columns) for d in app.dataframe]
+    assert any("Illustrative ΔEVE (SEK)" in cols for cols in columns), columns
+
+
+def test_scenario_config_error_degrades_to_a_sanitized_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A corrupt scenario configuration is representative invalid data: the
+    Risk tab shows the named error, sanitized (no path, no traceback), and the
+    other tabs keep rendering behind the guarded tab."""
+    import app.tabs.risk as risk_mod
+    from yieldcurve.risk.scenarios import ScenarioConfigError
+
+    def _bad_config(*args: object, **kwargs: object) -> object:
+        raise ScenarioConfigError(
+            "/opt/yieldcurve/scenarios.toml: missing 'severe_parallel_up' row"
+        )
+
+    monkeypatch.setattr(risk_mod, "eu_scenarios", _bad_config)
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    assert len(at.exception) == 0
+    rendered = " ".join(e.value for e in at.error)
+    assert "ScenarioConfigError" in rendered
+    assert "[path]" in rendered  # the embedded path is stripped
+    assert "/opt" not in rendered
+    assert "Traceback" not in rendered
+    assert "Svensson RMSE (bp)" in _labels(at)  # the Curve tab still renders
+
+
+def test_all_interactive_controls_are_labeled_and_reachable() -> None:
+    """Keyboard-reachability structural proxy: every interactive control in
+    every tab renders a non-empty label and is enabled; the only disabled
+    control is the pinned 'As of' date. True DOM focus order, aria attributes,
+    and the 390 px viewport journey are Task 26 browser checks."""
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.run()
+    widgets: list[tuple[str, object]] = []
+    for kind in ("selectbox", "radio", "slider", "checkbox", "multiselect", "date_input"):
+        widgets.extend((kind, element) for element in at.sidebar.get(kind))
+        for tab in at.tabs:
+            widgets.extend((kind, element) for element in tab.get(kind))
+    assert widgets, "no controls rendered — the app surface changed"
+    for kind, widget in widgets:
+        label = getattr(widget, "label", "")
+        assert label, f"{kind} control rendered without a label"
+        if label == "As of":
+            assert widget.disabled is True  # type: ignore[attr-defined]
+        else:
+            assert getattr(widget, "disabled", False) is False, label
+    assert len(at.exception) == 0
+
+
+def test_chart_and_table_containers_are_fluid_for_narrow_screens() -> None:
+    """390 px first-screen overflow proxy (structural): every chart and data
+    table renders in a fluid container (use_container_width=True or
+    width='stretch'), and no column layout pins a numeric width. The real
+    390x844 viewport journey — first-screen fit, keyboard access, horizontal
+    overflow — is owned by Task 26; this test guards the app-level
+    preconditions that journey depends on."""
+    app_root = Path(__file__).resolve().parents[2]
+    sources = [app_root / "app.py", *sorted((app_root / "app" / "tabs").glob("*.py"))]
+    offenders: list[str] = []
+    for path in sources:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if not (isinstance(node.func.value, ast.Name) and node.func.value.id == "st"):
+                continue
+            name = node.func.attr
+            if name in ("plotly_chart", "dataframe"):
+                if not _uses_fluid_width(node):
+                    offenders.append(f"{path.name}:{node.lineno} {name} not fluid")
+            elif name == "columns":
+                for kw in node.keywords:
+                    if (
+                        kw.arg == "width"
+                        and isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, (int, float))
+                    ):
+                        offenders.append(f"{path.name}:{node.lineno} columns pinned width")
+    assert not offenders, offenders
+
+
+def _uses_fluid_width(node: ast.Call) -> bool:
+    """True when the call passes use_container_width=True or width='stretch'."""
+    for kw in node.keywords:
+        if kw.arg is None:
+            continue
+        if kw.arg == "use_container_width":
+            try:
+                if ast.literal_eval(kw.value) is True:
+                    return True
+            except (ValueError, SyntaxError):
+                pass
+        elif (
+            kw.arg == "width" and isinstance(kw.value, ast.Constant) and kw.value.value == "stretch"
+        ):
+            return True
+    return False
