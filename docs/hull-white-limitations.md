@@ -54,7 +54,7 @@ short-rate simulation and swaption pricing only.
 independent quotes. A co-terminal ATM strip is the standard compromise: it is
 the set Hull-White can genuinely match.
 
-The calibration RMSE in notebook 06 — about 6.5 bp against the packaged
+The calibration RMSE in notebook 06 — 6.5026 bp against the packaged
 7-expiry by 4-tenor illustrative grid — is a measure of fit quality, not a
 measure of modelling error. What was not fitted — the smile across strikes,
 the full expiry-tenor grid — is not captured by this model.

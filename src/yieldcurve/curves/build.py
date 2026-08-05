@@ -11,9 +11,8 @@ methods (cubic log-DF, monotone convex) remain available as overlays built on
 the canonical nodes via ``yieldcurve.curves.interpolation.overlay_curve``;
 their residuals are measured with
 ``yieldcurve.curves.bootstrap.repricing_report``, never asserted to vanish. A
-``method=`` parameter also remains on the builders: a direct sequential
-bootstrap that is not an overlay and carries no exact-repricing guarantee,
-kept only for tooling — ``scripts/write_golden.py`` and notebook 04 use it.
+A ``method=`` parameter also remains on the builders so the Streamlit app
+can offer comparative interpolation overlays at runtime.
 """
 
 from __future__ import annotations

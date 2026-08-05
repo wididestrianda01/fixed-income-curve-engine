@@ -87,8 +87,9 @@ class CurveSet:
     project. No other module needs to know that two curves exist.
 
     Discount and every forecast curve must share one reference date, so every
-    present value is a ratio in absolute curve time. Forecast maps are frozen on
-    construction: reads allocate nothing and callers cannot mutate them.
+    present value is a ratio in absolute curve time. The forecast map is
+    constructed by the builders and treated as read-only by consumers: reads
+    allocate nothing and no consumer mutates a map.
     """
 
     discount: DiscountCurve

@@ -4,9 +4,6 @@ build-backend = "hatchling.build"
 
 [project]
 name = "yieldcurve"
-# Task 18: the public description is the controlling objective verbatim (spec
-# section "Objective"). No author or project-URL fields are declared: the
-# repository URL is not publicly resolvable, so metadata ships no placeholders.
 description = "An educational fixed-income analytics project built around a frozen market-data snapshot. It demonstrates curve construction, selected instrument valuation, interest-rate risk diagnostics, and a one-factor Hull-White example. It is not a trading, accounting-valuation, regulatory-reporting, or production risk system."
 keywords = ["fixed-income", "yield-curve", "interest-rate-risk", "hull-white", "educational"]
 readme = "README.md"
