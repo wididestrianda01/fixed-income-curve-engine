@@ -198,7 +198,10 @@ def test_the_app_guards_missing_snapshot_before_tabs_render(
         raise MissingDatasetError("packaged snapshot manifest: is missing; reinstall the package")
 
     # beyond.py binds app.data.load_snapshot at import time; importing it before the
-    # patch keeps that binding honest for every later test in this process.
+    # patch keeps that binding honest for every later test in this process. The patch
+    # still reaches app.py: each at.run() re-executes the app script, and its
+    # `from app.data import load_snapshot` re-reads the (already-imported) module
+    # attribute at execution time, so build_sidebar calls the raising stub.
     assert beyond_mod.load_snapshot is app_data.load_snapshot  # type: ignore[attr-defined]
     monkeypatch.setattr(app_data, "load_snapshot", _missing)
     at = AppTest.from_file(APP, default_timeout=TIMEOUT)
@@ -263,10 +266,12 @@ def test_hull_white_calibration_second_request_is_a_cache_hit(
 
     monkeypatch.setattr(app_data, "calibrate", counting)
     app_data.hullwhite_calibration(ASOF, InterpMethod.MONOTONE_CONVEX)
-    before = calls["n"]
+    # The Streamlit cache is process-global, so the first request is a hit (0 calls)
+    # when an earlier test warmed this key and a cold start (1 call) otherwise.
+    first = calls["n"]
     app_data.hullwhite_calibration(ASOF, InterpMethod.MONOTONE_CONVEX)
-    assert calls["n"] == before
-    assert before <= 1
+    # The second request must be a cache hit: it adds no calls on top of the first.
+    assert calls["n"] == first
 
 
 def test_expensive_calibration_is_cached_and_the_method_control_is_global(
@@ -289,16 +294,23 @@ def test_expensive_calibration_is_cached_and_the_method_control_is_global(
     monkeypatch.setattr(app_data, "calibrate", counting)
     at = AppTest.from_file(APP, default_timeout=TIMEOUT)
     at.run()
+    # The Streamlit cache is process-global, so the MONOTONE key may already be warm
+    # from earlier tests (0 calls) or cold (1 call) — never more than one.
+    n_monotone = calls["n"]
+    assert n_monotone <= 1
     captions = " ".join(c.value for c in at.caption)
     assert "Under monotone convex the ladder is additive only to about 1.4%" in captions
 
     at.sidebar.selectbox[0].select(InterpMethod.CUBIC_LOG_DF)
     at.run()
-    assert calls["n"] == 1  # a cold curve key calibrates exactly once
+    # CUBIC is a fresh cache key, so switching methods recalibrates exactly once on
+    # top of whatever the MONOTONE run did — regardless of process-wide cache warmth.
+    n_cubic = calls["n"]
+    assert n_cubic == n_monotone + 1
     captions = " ".join(c.value for c in at.caption)
     assert "Under this smooth scheme the ladder is additive to about 1e-4" in captions
     assert len(at.exception) == 0
 
     at.run()  # unchanged choice: the rerun must reuse the cached calibration
-    assert calls["n"] == 1
+    assert calls["n"] == n_cubic
     assert len(at.exception) == 0

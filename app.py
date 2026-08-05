@@ -37,14 +37,41 @@ RENDER_ERRORS = (
     PortfolioError,
 )
 
+# Fatal at startup: the packaged snapshot is unusable. The loader converts the
+# packaged-resource failures it detects into MissingDatasetError, but a corrupt-but-
+# present resource can still escape that conversion as a raw OSError (a read failure
+# inside the TOML parser) or ModuleNotFoundError (the yieldcurve.data package itself is
+# absent on a partial install). The trailing Exception is the documented fallback:
+# initialization must never leak a raw traceback to the browser, so any failure here
+# shows the same sanitized recovery message and logs full detail server-side.
+_SNAPSHOT_INIT_ERRORS: tuple[type[BaseException], ...] = (
+    MissingDatasetError,
+    ModuleNotFoundError,
+    OSError,
+    Exception,
+)
+
 _LOGGER = logging.getLogger("app")
 
 # Local filesystem locations must never reach the browser (SEC-06). Some domain error
 # messages embed paths (PortfolioError carries the TOML path; an external-root
 # MissingDatasetError carries the target path), so anything displayed is run through this
-# sanitizer: absolute POSIX paths, Windows drive paths, and ~-home prefixes become
-# "[path]". The full message still reaches the server log.
-_PATH_TOKEN = re.compile(r"(?:[A-Za-z]:[\\/]|~?/)[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)+")
+# sanitizer: absolute POSIX paths (/tmp, /usr/local/bin), Windows drive paths (C:\x,
+# C:\Users\me), ~-home prefixes (~/bin), and relative paths with two or more components
+# (data/demo_portfolio.toml) become "[path]". Currency pairs (USD/SEK) and number
+# fractions and dates (1/2, 12.5/1.0, 2026/07/24) are not paths and survive. The full
+# message still reaches the server log.
+_PATH_TOKEN = re.compile(
+    r"(?:"
+    # absolute POSIX, Windows drive, and ~-home paths: a prefix plus 1+ components
+    r"(?<![A-Za-z0-9._~-])(?:[A-Za-z]:[\\/]|~?/)[A-Za-z0-9._~-]+(?:[\\/][A-Za-z0-9._~-]+)*(?<!\.)"
+    r"|"
+    # relative paths with 2+ components; a leading all-caps-three-letter (currency) or
+    # numeric (fraction/date) component excludes the token from this branch
+    r"(?<![A-Za-z0-9._~-])(?!(?:[A-Z]{3}|\d+(?:\.\d+)?)/[A-Za-z0-9._~-]+(?![A-Za-z0-9]))"
+    r"[A-Za-z0-9._~-]+[\\/][A-Za-z0-9._~-]+(?:[\\/][A-Za-z0-9._~-]+)*(?![A-Za-z0-9])(?<!\.)"
+    r")"
+)
 
 _METHOD_LABELS = {
     InterpMethod.MONOTONE_CONVEX: "Monotone convex (default)",
@@ -102,7 +129,7 @@ def main() -> None:
     st.title("A Swedish government curve, and what it can and cannot tell you")
     try:
         state = build_sidebar()
-    except MissingDatasetError:
+    except _SNAPSHOT_INIT_ERRORS:
         _LOGGER.exception("App initialization failed: the packaged snapshot is unusable")
         st.error(
             f"The packaged market-data snapshot ({SNAPSHOT_DATE.isoformat()}) is missing "
