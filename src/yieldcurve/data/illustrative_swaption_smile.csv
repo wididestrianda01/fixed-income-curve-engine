@@ -1,0 +1,33 @@
+# ILLUSTRATIVE, NOT MARKET DATA. These normal volatilities are constructed, not
+# observed; they are not a fit to any traded price.
+# Snapshot as-of: 2026-07-24 (from src/yieldcurve/data/snapshot_manifest.toml).
+# Construction rule, exactly as implemented in scripts/build_illustrative_smile.py:
+#   sigma_N(K; e, m) = sigma_atm(e, m) * (1 + -0.4 * u + 0.25 * u^2 + 0.06 * u^4)
+#   u = (K - 0.03) / 0.03; sigma_atm from build_illustrative_vols.py.
+# Expiries (1.0, 2.0, 5.0) years on swap tenor 5.0 years; strikes the ATM forward
+#   plus deltas (-0.015, -0.01, -0.005, 0.0, 0.005, 0.01, 0.015).
+# Expiry/maturity dates are asof + floor(years * 365.25) days.
+# Shape is market-plausible: negative skew, positive convexity, small quartic.
+# Fully deterministic: regeneration is byte-identical.
+expiry,maturity,strike,vol
+2027-07-24,2032-07-23,0.015000,104.9680
+2027-07-24,2032-07-23,0.020000,96.3137
+2027-07-24,2032-07-23,0.025000,89.0027
+2027-07-24,2032-07-23,0.030000,82.8967
+2027-07-24,2032-07-23,0.035000,77.9498
+2027-07-24,2032-07-23,0.040000,74.2079
+2027-07-24,2032-07-23,0.045000,71.8093
+2028-07-23,2033-07-23,0.015000,105.9215
+2028-07-23,2033-07-23,0.020000,97.1886
+2028-07-23,2033-07-23,0.025000,89.8111
+2028-07-23,2033-07-23,0.030000,83.6497
+2028-07-23,2033-07-23,0.035000,78.6578
+2028-07-23,2033-07-23,0.040000,74.8820
+2028-07-23,2033-07-23,0.045000,72.4616
+2031-07-24,2036-07-23,0.015000,81.7804
+2031-07-24,2036-07-23,0.020000,75.0379
+2031-07-24,2036-07-23,0.025000,69.3418
+2031-07-24,2036-07-23,0.030000,64.5847
+2031-07-24,2036-07-23,0.035000,60.7305
+2031-07-24,2036-07-23,0.040000,57.8153
+2031-07-24,2036-07-23,0.045000,55.9465

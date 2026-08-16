@@ -173,9 +173,10 @@
 # This notebook is an educational one-factor example. It does not claim, and
 # is not set up to deliver:
 #
-# - a model for regulatory capital or reporting: CRR Articles 313-314 govern
-#   institution-wide model governance, independent validation, backtesting
-#   and capital reporting, and none of that machinery exists here;
+# - a model for regulatory capital or reporting: for a bank, model
+#   governance, independent validation and internal-capital assessment sit
+#   under CRD Articles 74 (governance), 84 (IRRBB) and 101 (ICAAP), and none
+#   of that machinery exists here;
 # - a validated pricing or risk model: the calibration below is a
 #   least-squares fit to a constructed grid, with no hold-out testing, no
 #   independent validation, and no governance or change-control process;

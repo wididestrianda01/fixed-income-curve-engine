@@ -8,7 +8,7 @@
 # sha256 checksum per dataset. Tests verify the manifest against the packaged
 # CSV bytes, so a dataset and its provenance cannot drift apart silently.
 snapshot_date = "2026-07-24"
-description = "Frozen market-data snapshot: SEK government curve inputs, USD OIS and forecast curve inputs, ECB euro-area spot curve and Svensson parameters, FRED Treasury CMT history, and an illustrative ATM swaption volatility grid."
+description = "Frozen market-data snapshot: SEK government curve inputs, USD OIS and forecast curve inputs, ECB euro-area spot curve and Svensson parameters, FRED Treasury CMT history, and illustrative volatility, inflation-breakeven and cross-currency-basis curves."
 
 [datasets.riksbank_bills]
 observation_date = "2026-07-24"
@@ -152,3 +152,42 @@ columns = ["expiry", "maturity", "vol"]
 units = { expiry = "ISO 8601 option expiry date", maturity = "ISO 8601 swap maturity date", vol = "normal volatility in basis points" }
 limitations = "Illustrative only: not market data, not observed live quotes and not a fit to any traded price"
 sha256 = "c35be87f9cf12272afea68ed7b87a385f7bcc87e3be03a4dd24a183c7f282cfe"
+
+[datasets.illustrative_swaption_smile]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
+classification = "illustrative"
+licence = "Constructed, not observed market data; no redistribution restrictions"
+transformation = "sigma_N(K; e, m) = sigma_atm(e, m) * (1 - 0.40 * u + 0.25 * u^2 + 0.06 * u^4), u = (K - 0.03) / 0.03; expiries 1/2/5y on swap tenor 5y; strikes +-150bp around the ATM forward in 50bp steps"
+columns = ["expiry", "maturity", "strike", "vol"]
+units = { expiry = "ISO 8601 option expiry date", maturity = "ISO 8601 swap maturity date", strike = "decimal strike rate (0.03 = 3%)", vol = "normal volatility in basis points" }
+limitations = "Illustrative only: not market data, not observed live quotes and not a fit to any traded price; the skew and convexity are market-plausible by construction only"
+sha256 = "eeb6ef8b55ea5f07a0b2bf23c1ad895546dcb3dae9fe23901e1c985c26ab9e88"
+
+[datasets.illustrative_inflation_breakevens]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
+classification = "illustrative"
+licence = "Constructed, not observed market data; no redistribution restrictions"
+transformation = "breakeven(T) = 0.023 + 0.012 * (T / 3.0) * exp(1 - T / 3.0), continuously compounded zero-coupon breakeven rates as decimals (0.023 = 2.3%); tenors 1..30 years"
+columns = ["tenor_years", "breakeven"]
+units = { tenor_years = "tenor in years", breakeven = "decimal continuously compounded zero-coupon breakeven rate (0.023 = 2.3%)" }
+limitations = "Illustrative only: not market data, not observed live quotes, not a fit to any traded inflation price and not a CPI forecast; the humped shape is market-plausible by construction only"
+sha256 = "dec6dc7fc7f13dd319e9098a4fb95f0e0f53db0636e42789957aed82b87a21d5"
+
+[datasets.illustrative_xccy_basis]
+observation_date = "2026-07-24"
+retrieval_date = "2026-07-24"
+publisher = "Constructed in this repository"
+primary_url = "https://github.com/wididestrianda01/fixed-income-curve-engine"
+classification = "illustrative"
+licence = "Constructed, not observed market data; no redistribution restrictions"
+transformation = "basis_bp(t) = -28.0 * (1 - exp(-t / 3.0)); tenors 0.25..30 years; the EUR/USD cross-currency basis added to the EUR leg"
+columns = ["tenor_years", "basis_bp"]
+units = { tenor_years = "tenor in years", basis_bp = "basis spread in basis points" }
+limitations = "Illustrative only: not market data, not observed live quotes and not a fit to any traded price; the sign and shape are market-plausible by construction only"
+sha256 = "41b491a5174820a97b13600378ee729c512b88a22e406737e7603d251c93b7fa"

@@ -299,8 +299,9 @@ plt.show()
 # This has practical consequences in three places. Products priced off forwards,
 # such as caps, floors and forward starting swaps, inherit the artefact directly.
 # Key rate durations, computed in notebook 05 by perturbing the curve at one
-# pillar, depend on how far a bump propagates, which is a property of the
-# interpolation rule. And a curve refitted daily under a non-local rule will show
+# pillar, depend on how far a bump propagates — a property of the interpolation
+# rule that notebook 05 does not itself vary (it uses the canonical rule
+# throughout). And a curve refitted daily under a non-local rule will show
 # phantom moves at maturities where nothing was quoted differently.
 #
 # ## Limitations

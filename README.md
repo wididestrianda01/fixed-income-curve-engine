@@ -1,6 +1,12 @@
-# yieldcurve
+# yieldcurve — fixed-income and rates analytics
 
-An educational fixed-income analytics project built around a frozen market-data snapshot. It demonstrates curve construction, selected instrument valuation, interest-rate risk diagnostics, and a one-factor Hull-White example. It is not a trading, accounting-valuation, regulatory-reporting, or production risk system.
+Curve construction, instrument pricing, interest-rate risk, and term-structure
+models — Hull-White and G2++, SABR volatility smiles, inflation, and
+cross-currency — built from scratch in Python and cross-checked against QuantLib.
+An educational portfolio around a frozen market-data snapshot: every number is
+measured and pinned by tests, every model's limits are stated, and nothing here
+is a trading, accounting-valuation, regulatory-reporting, or production risk
+system.
 
 ## Quick start
 
@@ -70,8 +76,8 @@ Discount factor at 1Y: 0.959903
 | The ECB's published Svensson parameters reconstruct the ECB's published spot curve within 0.5 bp at every published tenor; the library's own Svensson fit lands within 1.0 bp at every tenor with RMSE below 0.5 bp. | FRTB, capital, AVA, accounting classification (e.g. IFRS level hierarchy), or supervisory reporting. |
 | The six EU 2024/856 supervisory shocks of Article 1(1) — parallel up/down, short up/down, steepener, flattener — with the USD/SEK parameters (200/300/150 bp) and the Article 3(7) post-shock rate floor. | Trade capture, order execution, authentication, or access control. |
 | DV01 is a positive loss per 1 bp in SEK per 100 face (the loss-tail convention is pinned by tests). | Licensed market-data redistribution: no third-party feed is shipped; FRED's retrieval terms and the unverified Riksgalden/Bloomberg statuses are recorded in `DATA_SOURCES.md`. |
-| Package statement coverage is measured at 94.91% by the package-test command above (which enforces a 90% floor). | XVA or counterparty exposure. |
-| The wheel carries all 11 packaged datasets, `scenarios.toml`, and the model-limitations doc; the sdist's denylist scan reports zero local-state hits (asserted by `tests/test_build.py`). | Live or streaming market data: one frozen, fully offline snapshot; there is no refresh tooling and no network path in the package. |
+| Package statement coverage is measured at 95.26% by the package-test command above (which enforces a 90% floor). | XVA or counterparty exposure. |
+| The wheel carries all 14 packaged datasets, `scenarios.toml`, and the model-limitations doc; the sdist's denylist scan reports zero local-state hits (asserted by `tests/test_build.py`). | Live or streaming market data: one frozen, fully offline snapshot; there is no refresh tooling and no network path in the package. |
 | A golden pipeline file pins end-to-end values as a regression check. | A validated production risk model. The checks in this README are software verification, not empirical or regulatory model validation. |
 
 ## What the repository demonstrates
@@ -81,10 +87,29 @@ Discount factor at 1Y: 0.959903
 - **Interest-rate risk.** Effective/modified duration, DV01 (positive-loss convention), dollar convexity, key-rate duration, a par-rate delta ladder, PCA on historical yield changes, EU 2024/856 scenario revaluation, and a linearized delta VaR/ES proxy.
 - **One-factor Hull-White example.** Mean-reversion calibration to an illustrative swaption vol grid, Jamshidian swaption pricing, zero-coupon bond options, and Bachelier normal-vol support. See `docs/hull-white-limitations.md` for the model's bounded validity.
 - **Parametric fits.** Nelson-Siegel and Svensson families fitted with explicit fit-result diagnostics (bounds, Jacobian, residuals).
+- **SABR volatility smiles.** Hagan (2002) normal and lognormal implied volatility with skew and curvature, calibrated to an illustrative smile and cross-checked against QuantLib.
+- **Two-factor G2++.** The two-factor Gaussian short-rate model with exact Gaussian simulation and affine bond pricing — the decorrelation a one-factor Hull-White cannot produce, cross-checked against QuantLib's `G2`.
+- **Inflation.** Zero-coupon breakeven curves, inflation-linked bond (linker) pricing with indexation lag, and zero-coupon inflation swaps, off the Fisher identity.
+- **Cross-currency basis.** Cross-currency basis curves and collateral (CSA) currency discounting — the post-2008 multi-curve distinction made concrete.
+
+## The notebooks
+
+Eleven executable notebooks tell one story — quotes → curve → pricing → risk →
+volatility → multi-factor dynamics → inflation → cross-currency → stability —
+and each is set in the currency that isolates its lesson: SEK for curve
+construction and interpolation (Riksbank bills and benchmarks), EUR for
+parametric fitting (the ECB publishes its own Svensson parameters, an
+independent reconstruction target), and USD for dual-curve pricing, the risk and
+scenario work, the Hull-White and G2++ models, and the SABR smile (where the
+SOFR/Term-SOFR OIS-basis story is cleanest). Inflation and cross-currency are
+illustrated in USD, and the final notebook checks rolling stability on the
+five-year Treasury history. The currency changes on purpose, not because the
+project cannot stay consistent. Notebook sources live in `notebooks/src/`
+(paired `.ipynb` renders alongside).
 
 ## Market data: one frozen, offline snapshot
 
-The repository ships exactly one read-only snapshot, dated 2026-07-24, as packaged resources. Its eleven datasets are each classified as **public** (observed values with a source and licence status), **constructed** (computed in this repository from recorded inputs), or **illustrative** (fabricated with a documented shape — the swaption vol grid is not market data and not a fit to any traded price). Every dataset records publisher, retrieval and observation dates, transformation, licence/redistribution status, and limitations in `DATA_SOURCES.md`, pinned by tests against the packaged bytes.
+The repository ships exactly one read-only snapshot, dated 2026-07-24, as packaged resources. Its fourteen datasets are each classified as **public** (observed values with a source and licence status), **constructed** (computed in this repository from recorded inputs), or **illustrative** (fabricated with a documented shape — the swaption vol grid and smile, the inflation breakevens and the cross-currency basis are not market data and not a fit to any traded price). Every dataset records publisher, retrieval and observation dates, transformation, licence/redistribution status, and limitations in `DATA_SOURCES.md`, pinned by tests against the packaged bytes.
 
 The snapshot is what makes the repository fully offline: no module touches the network, no download or update instructions exist, and the app's as-of date is pinned to it. The USD curve is a CMT-implied approximation built from US Treasury constant-maturity par yields plus a dated OIS spread and a Term-SOFR basis (both recorded as approximate, constructed inputs).
 
@@ -94,14 +119,16 @@ Everything below is a software verification check with an exact measured quantit
 
 | Check | Measured quantity | Where |
 |---|---|---|
-| Package tests, coverage-gated | `683 passed, 1 skipped`; statement coverage `94.91%` against a 90% floor | `uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90` |
+| Package tests, coverage-gated | `809 passed, 1 skipped`; statement coverage `95.26%` against a 90% floor | `uv run pytest --ignore=tests/app --ignore=tests/test_notebook_hygiene.py --cov=yieldcurve --cov-report=term-missing --cov-fail-under=90` |
 | App behavior and accessibility | `57 passed` | `uv run pytest -o addopts='' tests/app` |
 | QuantLib cross-checks | clean/dirty price within 1e-8 per 100 face; accrued within 1e-10; yield within 1e-8 absolute; modified duration matched directly (rel=1e-4); convexity through the price change under a 50 bp move (predicted price-change agreement to 1e-6 per 100 face) | `tests/test_quantlib_parity.py`, `tests/parity/test_quantlib_risk.py` |
 | Hull-White swaption NPV vs QuantLib Jamshidian engine | `test_normal_vol_matches_an_independent_quantlib_price` | `tests/models/test_hullwhite_swaptions.py` |
 | ECB Svensson reconstruction | published parameters rebuild the published spot curve within 0.5 bp at every published tenor; independent fit within 1.0 bp, RMSE < 0.5 bp | `tests/curves/test_parametric.py` |
+| SABR implied vol vs QuantLib `sabrVolatility` | normal and lognormal, general `beta`, rel 1e-10 | `tests/models/test_sabr.py` |
+| G2++ bond price and bond option vs QuantLib `G2` | machine precision (rel 1e-10) across parameter and (t, T) grids | `tests/models/test_g2pp.py` |
 | Log-linear quote repricing | every quote within the 1e-6 bp tolerance; overlay residuals measured per quote (pinned nonzero: each > 1e-8 in decimal rate) | `tests/curves/test_bootstrap.py` |
 | EU 2024/856 scenarios | six Article 1(1) shocks, USD/SEK 200/300/150 bp, Article 3(7) floor applied | `tests/risk/test_bcbs_scenarios.py` |
-| Wheel/sdist contents | wheel: 44 members incl. all 11 datasets, `scenarios.toml`, limitations doc; sdist: 128 members, zero denylist hits | `tests/test_build.py`, `tests/test_distribution.py` |
+| Wheel/sdist contents | wheel: 53 members incl. all 14 datasets, `scenarios.toml`, limitations doc; sdist: 155 members, zero denylist hits | `tests/test_build.py`, `tests/test_distribution.py` |
 | Golden pipeline regression | pinned end-to-end values (`pipeline_v1.json`) | `tests/golden/test_pipeline_golden.py` |
 
 QuantLib is a development-only extra: nothing in `src/` imports it, and the parity tests treat it as a cross-check, not as proof that the models are validated for use.
@@ -136,9 +163,9 @@ src/yieldcurve/    the package (curves, instruments, pricing, risk, models, mark
 app/               the Streamlit app (tabs: The curve, Pricing, Risk, Beyond the curve)
 notebooks/         executable notebooks (sources in notebooks/src, reviewable source of truth)
 tests/             behavioral, parity, golden, build, app, and offline tests
-scripts/           deliberate regeneration tools (golden file, illustrative vol grid)
+scripts/           deliberate regeneration tools (golden file, illustrative data generators)
 DATA_SOURCES.md    provenance and licensing for every packaged dataset
-docs/              model limitations, this README's screenshot, design/plan artifacts
+docs/              model limitations, the ground-up explanation, and this README's screenshot
 ```
 
 ## License

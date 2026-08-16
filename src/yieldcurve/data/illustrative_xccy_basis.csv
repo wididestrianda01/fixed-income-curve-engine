@@ -1,0 +1,21 @@
+# ILLUSTRATIVE, NOT MARKET DATA. This cross-currency basis is constructed, not
+# observed; it is not a fit to any traded price.
+# Snapshot as-of: 2026-07-24 (from src/yieldcurve/data/snapshot_manifest.toml).
+# Construction rule, exactly as implemented in scripts/build_illustrative_xccy.py:
+#   basis_bp(t) = -28.0 * (1 - exp(-t / 3.0)), t in years.
+# Tenors [0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0] years.
+# Shape is market-plausible: near zero at the short end, widening to a
+# negative level at the long end (the USD-funding-premium sign).
+# Fully deterministic: regeneration is byte-identical.
+tenor_years,basis_bp
+0.25,-2.2388
+0.5,-4.2985
+1,-7.9371
+2,-13.6243
+3,-17.6994
+5,-22.7115
+7,-25.2848
+10,-27.0011
+15,-27.8113
+20,-27.9644
+30,-27.9987

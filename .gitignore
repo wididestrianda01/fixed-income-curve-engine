@@ -1,9 +1,9 @@
 # --- Local planning artifacts: never publish ---
-# The four .context/*.md notes (spec/theory/regulation/references) are tracked
-# remediation deliverables; any other file under .context/ stays ignored.
-.context/*
-!.context/*.md
+.context/
 .claude/
+# Local agent/browser-session state (ruflo/ruvector): never publish.
+.ruflo/
+.ruvector/
 docs/superpowers/
 PLAN.md
 .codegraph/

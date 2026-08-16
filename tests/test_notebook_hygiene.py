@@ -62,8 +62,12 @@ def _normalize(text: str) -> str:
     return "\n".join(lines)
 
 
-def test_all_six_notebooks_exist() -> None:
-    assert len(NOTEBOOKS) == 6
+def test_every_source_has_a_rendered_notebook() -> None:
+    """Each notebook source (``notebooks/src/*.py``) has a paired ``.ipynb``
+    render, and no rendered notebook is orphaned from a source."""
+    sources = {p.stem for p in (REPO_ROOT / "notebooks" / "src").glob("*.py")}
+    rendered = {p.stem for p in NOTEBOOKS}
+    assert rendered == sources
 
 
 @pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda p: p.name)

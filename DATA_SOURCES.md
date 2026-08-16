@@ -297,6 +297,83 @@ explicitly instead of asserting terms.
 - **Known limitations:** illustrative, not observed live quotes; not market data; not a
   fit to any traded price; the shape is market-plausible by construction only.
 
+## illustrative_swaption_smile
+
+**Classification:** illustrative
+
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no external source — construction record and generator live in this
+  repository (`https://github.com/wididestrianda01/fixed-income-curve-engine`).
+- **Retrieval date:** 2026-07-24 (generation as-of; the grid is generated, not retrieved)
+- **Observation date:** none — the values are fabricated with a documented shape, not
+  observed.
+- **Raw fields and units:** CSV columns: `expiry` (ISO 8601 option expiry date),
+  `maturity` (ISO 8601 swap maturity date), `strike` (decimal strike rate, 0.03 = 3%),
+  `vol` (normal volatility in basis points).
+- **Transformation:** `sigma_N(K; e, m) = sigma_atm(e, m) * (1 - 0.40 * u + 0.25 * u^2 + 0.06 * u^4)`
+  with `u = (K - 0.03) / 0.03`, the ATM construction shared with
+  `illustrative_swaption_vols`, run over expiries (1.0, 2.0, 5.0) on swap tenor 5.0 and
+  strikes the ATM forward plus deltas (-0.015 to +0.015) in 50 bp steps. The quartic
+  term is small and kept deliberately so a SABR fit leaves a measured residual rather
+  than an exact planted fit. Fully deterministic; regenerate with
+  `python scripts/build_illustrative_smile.py --write-packaged`.
+**Licence/redistribution:** verified — wholly generated in this repository from the
+  stated closed form; no third-party data is involved and no redistribution restrictions
+  apply to the values themselves (they are not market data).
+- **Known limitations:** illustrative, not observed live quotes; not market data; not a
+  fit to any traded price; the skew and convexity are market-plausible by construction
+  only.
+
+## illustrative_inflation_breakevens
+
+**Classification:** illustrative
+
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no external source — construction record and generator live in this
+  repository (`https://github.com/wididestrianda01/fixed-income-curve-engine`).
+- **Retrieval date:** 2026-07-24 (generation as-of; the grid is generated, not
+  retrieved)
+- **Observation date:** none — the values are fabricated with a documented shape, not
+  observed.
+- **Raw fields and units:** CSV columns: `tenor_years` (tenor in years),
+  `breakeven` (decimal continuously compounded zero-coupon breakeven rate,
+  0.023 = 2.3%).
+- **Transformation:** `breakeven(T) = 0.023 + 0.012 * (T / 3.0) * exp(1 - T / 3.0)`
+  with T the tenor in years, run over tenors (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0,
+  20.0, 30.0). Continuously compounded: a nominal zero rate `n(T)` and this
+  breakeven `b(T)` give the real zero rate `r(T) = n(T) - b(T)`. Fully deterministic;
+  regenerate with `python scripts/build_illustrative_inflation.py --write-packaged`.
+**Licence/redistribution:** verified — wholly generated in this repository from the
+  stated closed form; no third-party data is involved and no redistribution restrictions
+  apply to the values themselves (they are not market data).
+- **Known limitations:** illustrative, not observed live quotes; not market data; not a
+  fit to any traded inflation price and not a CPI forecast; the humped shape is
+  market-plausible by construction only.
+
+## illustrative_xccy_basis
+
+**Classification:** illustrative
+
+- **Publisher:** constructed in this repository; no publisher observes these values.
+- **Primary URL:** no external source — construction record and generator live in this
+  repository (`https://github.com/wididestrianda01/fixed-income-curve-engine`).
+- **Retrieval date:** 2026-07-24 (generation as-of; the grid is generated, not retrieved)
+- **Observation date:** none — the values are fabricated with a documented shape, not
+  observed.
+- **Raw fields and units:** CSV columns: `tenor_years` (tenor in years), `basis_bp`
+  (basis spread in basis points).
+- **Transformation:** `basis_bp(t) = -28.0 * (1 - exp(-t / 3.0))` with t the tenor in
+  years, run over tenors (0.25, 0.5, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0).
+  This is the EUR/USD cross-currency basis, the spread added to the EUR (€STR) leg of a
+  cross-currency basis swap against USD SOFR flat; the negative sign is the
+  USD-funding-premium convention. Fully deterministic; regenerate with
+  `python scripts/build_illustrative_xccy.py --write-packaged`.
+**Licence/redistribution:** verified — wholly generated in this repository from the
+  stated closed form; no third-party data is involved and no redistribution restrictions
+  apply to the values themselves (they are not market data).
+- **Known limitations:** illustrative, not observed live quotes; not market data; not a
+  fit to any traded price; the sign and shape are market-plausible by construction only.
+
 ---
 
 ## Known gaps and exclusions

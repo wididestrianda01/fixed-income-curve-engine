@@ -1,0 +1,18 @@
+# ILLUSTRATIVE, NOT MARKET DATA. These zero-coupon breakevens are constructed,
+# not observed; they are not a fit to any traded price and not a CPI forecast.
+# Snapshot as-of: 2026-07-24 (from src/yieldcurve/data/snapshot_manifest.toml).
+# Construction rule, exactly as implemented in scripts/build_illustrative_inflation.py:
+#   breakeven(T) = 0.023 + 0.012 * (T / 3.0) * exp(1 - T / 3.0)
+# Tenors (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0) years. Breakevens are continuously compounded decimals (0.023 = 2.3%).
+# Shape is market-plausible: a near-term hump decaying to a long-run anchor.
+# Fully deterministic: regeneration is byte-identical.
+tenor_years,breakeven
+1.0,0.030791
+2.0,0.034165
+3.0,0.035000
+5.0,0.033268
+7.0,0.030381
+10.0,0.026879
+15.0,0.024099
+20.0,0.023277
+30.0,0.023015

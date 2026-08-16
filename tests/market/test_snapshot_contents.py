@@ -27,6 +27,9 @@ EXPECTED_COLUMNS = {
     "ecb_spot_curve": ["tenor_years", "zero_rate"],
     "ecb_svensson_parameters": ["parameter", "value"],
     "illustrative_swaption_vols": ["expiry", "maturity", "vol"],
+    "illustrative_swaption_smile": ["expiry", "maturity", "strike", "vol"],
+    "illustrative_inflation_breakevens": ["tenor_years", "breakeven"],
+    "illustrative_xccy_basis": ["tenor_years", "basis_bp"],
 }
 
 # Per-column units, transcribed by hand from the manifest so the pin is
@@ -84,6 +87,20 @@ EXPECTED_UNITS = {
         "maturity": "ISO 8601 swap maturity date",
         "vol": "normal volatility in basis points",
     },
+    "illustrative_swaption_smile": {
+        "expiry": "ISO 8601 option expiry date",
+        "maturity": "ISO 8601 swap maturity date",
+        "strike": "decimal strike rate (0.03 = 3%)",
+        "vol": "normal volatility in basis points",
+    },
+    "illustrative_inflation_breakevens": {
+        "tenor_years": "tenor in years",
+        "breakeven": "decimal continuously compounded zero-coupon breakeven rate (0.023 = 2.3%)",
+    },
+    "illustrative_xccy_basis": {
+        "tenor_years": "tenor in years",
+        "basis_bp": "basis spread in basis points",
+    },
 }
 
 EXPECTED_CLASSIFICATION = {
@@ -98,6 +115,9 @@ EXPECTED_CLASSIFICATION = {
     "ecb_spot_curve": "public",
     "ecb_svensson_parameters": "public",
     "illustrative_swaption_vols": "illustrative",
+    "illustrative_swaption_smile": "illustrative",
+    "illustrative_inflation_breakevens": "illustrative",
+    "illustrative_xccy_basis": "illustrative",
 }
 
 
